@@ -1,0 +1,404 @@
+<html><head>
+<title>Galactic Empire</title>
+<link rel="stylesheet" type="text/css" href="theme/jquery-ui-1.8.4.custom.css" />
+
+<script src="RobTools.js"></script>
+<script src="Scrollbar.js"></script>
+<script src="GEScrollbar.js"></script>
+<script src="GEButton.js"></script>
+<script src="GEBubble.js"></script>
+<script src="jquery-1.4.2.min.js"></script>
+<script src="jquery-ui-1.8.4.custom.min.js"></script>
+<script src="Humans.js"></script>
+<script src="Gubrus.js"></script>
+<script src="Czins.js"></script>
+<script src="Blobs.js"></script>
+<script src="Bots.js"></script>
+<script src="Arachs.js"></script>
+<script src="Mutants.js"></script>
+<script src="Nukes.js"></script>
+<script src="Bozos.js"></script>
+<script src="Planet.js"></script>
+<script src="GalacticEmpireGame.js"></script>
+<script src="GalacticEmpire.js"></script>
+<script type="text/javascript" src="soundmanager2-nodebug-jsmin.js"></script>
+<script type="text/javascript">
+  var sounds = [
+    '103losehome.mp3',
+    '116capturehome.mp3',
+    '131winnorecord.mp3',
+    '142launchone.mp3',
+    '143constantfeed.mp3',
+    '513endofgame.mp3',
+    '516homehit.mp3',
+    '517valkyries.mp3',
+    '520bummer.mp3',
+    '525launch.mp3',
+    '555attackfail.mp3',
+    '601victorygood.mp3',
+    '601victory.mp3',
+    '658nukestakehome.mp3',
+    '659bozostakehome.mp3'
+  ];
+  window.sound = false;
+  soundManager.url = '/geweb/swf/';
+  soundManager.flashVersion = 8;
+  soundManager.useFlashBlock = false;
+  soundManager.onready(function () {
+    if(soundManager.supported()) {
+      window.sound = true;
+      for (var s in sounds) {
+        soundManager.createSound({
+          id: sounds[s].substring(3,sounds[s].indexOf('.')),
+          url: ('sounds/'+sounds[s]),
+          type: 'audio/mp3',
+          autoLoad: true
+        });
+      }
+    }
+  });
+</script>
+<script>
+
+  function handleNewGame() {
+    // Reset our buttons
+    // -----------------
+    if(window.location.toString().match(/\?.+/)) {
+      var q = window.location.toString().split('?');
+      // Redirect to new game.
+      window.location.href = q[0];
+    }
+    else {
+      newGame();
+    }
+  }
+  function newGame() {
+    document.getElementById('speednum').innerHTML = 'Delay: 10';
+    document.getElementById('fastbutton').disabled = false;
+    document.getElementById('mutebutton').value = 'Mute';
+    document.getElementById('abbutton').value = 'Enable Auto-Battle';
+
+    // Create the new Game
+    window.game = new GalacticEmpire('gecan');
+  }
+  function abOn() {
+    window.game.autobattle = true;
+  }
+  function abOff() {
+    window.game.autobattle = false;
+  }
+  function mute() {
+    window.game.sound = false;
+  }
+  function unMute () {
+    window.game.sound = true;
+  }
+  function fasterBattles() {
+    if(window.DELAY > 0) {
+      window.DELAY--;
+      document.getElementById('speednum').innerHTML = 'Delay: '+window.DELAY;
+    }
+    if(window.DELAY <= 0) {
+      document.getElementById('fastbutton').disabled = true;
+    }
+  }
+  function slowerBattles() {
+    window.DELAY++;
+    document.getElementById('speednum').innerHTML = 'Delay: '+window.DELAY;
+    if(window.DELAY > 0) {
+      document.getElementById('fastbutton').disabled = false;
+    }
+  }
+
+  function soundSwitch() {
+    if(window.game.sound) {
+      mute();
+      document.getElementById('mutebutton').value = 'Unmute';
+    }
+    else {
+      unMute();
+      document.getElementById('mutebutton').value = 'Mute';
+    }
+  }
+
+  function autoBattleSwitch() {
+    if(window.game.autobattle) {
+      abOff();
+      document.getElementById('abbutton').value = 'Enable Auto-Battle';
+    }
+    else {
+      abOn();
+      document.getElementById('abbutton').value = 'Disable Auto-Battle';
+    }
+  }
+
+  function startNewGame() {
+    if(window.game.game_started && !window.game.ge.game_over) {
+      $('#newgame_win').dialog({
+        modal: true,
+        resizable: false,
+        buttons: {
+          'Continue Current Game': function () {
+            $('#newgame_win').dialog('close');
+          },
+          'Start New Game': function () {
+            $('#newgame_win').dialog('close');
+            handleNewGame();
+          }
+        }
+      });
+    }
+    else {
+      handleNewGame();
+    }
+  }
+
+  function aboutGalacticEmpire() {
+    $('#about_win').dialog({
+      resizable: false,
+      width: 400
+    });
+  }
+
+</script>
+<style>
+  .gelink {
+    font-family: Sans-serif;
+    font-size: 0.625em;
+  }
+  .boldtext {
+    font-weight: bold;
+  }
+  .gecon_info {
+    font-weight: bold;
+    font-family: Sans-serif;
+    font-size: 0.625em;
+  }
+  .gecon_button {
+    height: 30px;
+    width: 100%;
+  }
+  .planet_info {
+    font-family: Sans-serif;
+    font-size: 8pt;
+  }
+  .bubble_info {
+    font-family: Sans-serif;
+    font-size: 8pt;
+    text-align: center;
+  }
+  #ge_ship_count {
+    font-weight: bold;
+    font-family: Sans-serif;
+    font-size: 8pt;
+    text-align: center;
+    width: 100%;
+    height: 12px;
+  }
+  input.game_button { 
+    width: 120px;
+    font-family: Sans-serif;
+    font-size: 0.625em;
+    color:#000; 
+    font-weight: bold;
+    background-color:#fed; 
+    border: 1px solid; 
+    border-color: #696 #363 #363 #696; 
+  } 
+  input[disabled].game_button { 
+    width: 120px;
+    font-family: Sans-serif;
+    font-size: 0.625em;
+    color:#000; 
+    font-weight: bold;
+    background-color:#CCC; 
+    border: 1px solid; 
+    border-color: #696 #363 #363 #696; 
+  } 
+</style>
+<!--
+    border: 2px outset ButtonFace;
+ -->
+</head>
+<body onload="newGame();">
+
+<div style="width: 630px; margin-left: auto; margin-right: auto;">
+<div style="width: 100%; position: relative">
+  <span style="bottom: 0px; right: 0px; font-family: Sans-serif; font-size: 0.5em; color: #999999; position: absolute; margin-right: 14px;">Developed by Robert Landrum</span>
+  <img src="pngs/ge_icon_32x32.png" border="0" width="32" height="32"><span style="font-family: Sans-serif; font-size: 32px; margin-left: 10px">Galactic Empire</span>
+</div>
+<div id="gegame" style="visibility: hidden">
+<div style="border: 2px solid black; width: 616px; height: 450px">
+<table border="0" cellpadding="0" cellspacing="0">
+<tr>
+<td valign="top">
+<canvas id="gecan"></canvas>
+</td>
+<td valign="top" width="100">
+<div width="100%" align="center" class="gecon_info" style="height: 100px; background-color: #AAAAAA;">
+<br />
+<b>Travel Time</b><br />
+<span id="gecon_travel_time">N/A</span><br />
+<br />
+<b>Year</b><br />
+<span id="gecon_current_year">0.0</span><br />
+</div>
+
+<div width="100%" align="center" style="height: 150px; background-color: #CCCCCC">
+<form onsubmit="return false">
+<input type="button" value="Do Battle" id="ge_dobattle" onclick="window.game.handleBattle()" class="gecon_button" /><br />
+<input type="button" value="Constant Feed" id="ge_constantfeed" onclick="window.game.handleFeed()" class="gecon_button" /><br />
+<nobr><input type="button" value="Ping" id="ge_ping" onclick="window.game.handlePing()" class="gecon_button" style="width: 50px;" />
+<input type="button" value="Scan" id="ge_scan" onclick="window.game.handleScan()" class="gecon_button" style="width: 50px;" /></nobr><br />
+<input type="button" value="Launch All" id="ge_launchall" onclick="window.game.handleLaunchAll()" class="gecon_button" /><br />
+<input type="button" value="Launch" id="ge_launch" onclick="window.game.handleLaunch()" class="gecon_button" />
+</form>
+
+</div>
+
+<table border="0" cellpadding="0" cellspacing="0" width="100">
+<tr>
+<td valign="top" width="15">
+
+  <table border="0" cellpadding="0" cellspacing="0" width="15">
+  <tr>
+  <td valign="top">
+  <img src="pngs/scrollbar/up-disabled.png" width="15" height="15" border="0" onclick="scrollMinus()" id="sb_up" onmousedown="scrollUpMD()" />
+  </td>
+  </tr>
+  <tr>
+  <td valign="top" height="150" width="15" style="background-image: url(pngs/scrollbar/channel-disabled.png); background-repeat: repeat-y" id="sb_channel">
+  <div style="height: 150; width: 15;" id="sb_channel_div">
+
+  <div id="sb_slider"
+  style="background-image: url('pngs/scrollbar/slider-disabled.png'); height: 17; width: 15;"></div>
+
+  </div>
+  </td>
+  </tr>
+  <tr>
+  <td valign="top" height="15" width="15">
+  <img src="pngs/scrollbar/down-disabled.png" width="15" height="15" border="0" onclick="scrollPlus()" id="sb_down" onmousedown="scrollDownMD()" />
+  </td>
+  </tr>
+  </table>
+
+</td>
+<td valign="top" width="85">
+<div id="planetinfo" style="width: 85px; height: 180px; border: 1px solid black">
+  <div id="ge_from" style="width: 85px; height: 82px;">
+    <div id="ge_from_name" style="position: relative; top: 4px; width: 100%; text-align: center" class="planet_info"></div>
+    <div id="ge_from_icon" style="position: relative; top: 4px; left: 25px; background-color: #FFFFFF; width: 32px; height: 32px"></div>
+    <div id="ge_from_ships" style="position: relative; top: 8px; width: 100%; text-align: center" class="planet_info"></div>
+    <div id="ge_from_industry" style="position: relative; top: 8px; width: 100%; text-align: center" class="planet_info"></div>
+  </div>
+
+  <div id="ge_ship_count"></div>
+
+  <div id="ge_to" style="width: 85px; height: 82px;">
+    <div id="ge_to_name" style="position: relative; top: 4px; width: 100%; text-align: center" class="planet_info"></div>
+    <div id="ge_to_icon" style="position: relative; top: 4px; left: 25px; background-color: #FFFFFF; width: 32px; height: 32px"></div>
+    <div id="ge_to_ships" style="position: relative; top: 8px; width: 100%; text-align: center" class="planet_info"></div>
+    <div id="ge_to_industry" style="position: relative; top: 8px; width: 100%; text-align: center" class="planet_info"></div>
+  </div>
+</div>
+
+</td>
+</tr>
+</table>
+
+</td>
+</tr>
+</table>
+<div id="graveyard" style="position: relative; height: 16px; background-color: #CCCCCC"><span id="speednum" style="position: absolute; bottom: 0px; right: 0px; font-size: 6pt; font-family: sans-serif; float: right; vertical-align: bottom; margin-right: 3px;">Delay: 10</span></div>
+</div>
+<br />
+<form onsubmit="return false;">
+<input type="button" onclick="soundSwitch();" id="mutebutton" value="Mute" class="game_button" />
+<input type="button" onclick="autoBattleSwitch();" id="abbutton" value="Enable Auto-Battle" class="game_button" />
+<input type="button" onclick="fasterBattles();" id="fastbutton" value="Faster Battles" class="game_button" />
+<input type="button" onclick="slowerBattles();" id="slowbutton" value="Slower Battles" class="game_button" />
+<input type="button" onclick="startNewGame();" id="newbutton" value="New Game" class="game_button" />
+</div>
+  <div align="center" style="width: 100%; margin-left: auto; margin-right: auto">
+    <a href="javascript:window.game.showHighScores()" class="gelink">High Scores</a> | <a href="javascript:aboutGalacticEmpire()" class="gelink">About Galactic Empire</a> | <a href="gehelp.html" class="gelink" target="_blank">How to Play</a>
+  </div>
+  <div align="center" style="width: 100%; margin-left: auto; margin-right: auto">
+    <a id="maplink" href="" class="gelink">Link to this Map</a>
+  </div>
+</div>
+
+<div id="big_bubble" style="display: none; position: absolute; width: 203px; height: 131px; background-image: url('pngs/big_bottom_right.png')">
+  <div id="big_bubble_content" style="width: 193px; height: 111px; position: absolute; top: 5px; left: 5px">
+    <div id="attacker_text" style="position: absolute; width: 57px; height: 13px; top: 2px; left: 7px" class="bubble_info">Attackers</div>
+    <div id="attacker_icon" style="width: 32px; height: 32px; top: 15px; left: 15px; position: absolute; background-image: url('pngs/human_icon_32x32.png')">
+    </div>
+    <div id="attacker_ships" style="position: absolute; top: 25px; left: 52px; width: 40px; height: 15px" class="bubble_info">100</div>
+
+    <div id="defender_text" style="position: absolute; width: 90px; height: 13px; top: 2px; left: 103px" class="bubble_info">Defenders</div>
+    <div id="defender_icon" style="width: 32px; height: 32px; top: 15px; left: 153px; position: absolute; background-image: url('pngs/bots_icon_32x32.png')">
+    </div>
+    <div id="defender_ships" style="position: absolute; top: 25px; left: 107px; width: 40px; height: 15px" class="bubble_info">50</div>
+
+    <div id="status_text" style="position: absolute; top: 55px; left: 10px; width: 180px; height: 25px" class="bubble_info">Ships Attack</div>
+
+  </div>
+
+</div>
+
+
+<div id="little_bubble" style="display: none; position: absolute; width: 153px; height: 45px; background-image: url('pngs/small_bottom_right.png')">
+  <div id="little_bubble_content" style="width: 140px; height: 22px; position: absolute; top: 8px; left: 7px">
+    <div id="fortify_text" style="font-family: Sans-serif; font-size: 8pt">78 ships fortify</div>
+  </div>
+</div>
+
+<div id="enemy_dead_win" style="display: none; position: absolute; width: 280px; height: 52px; border: 1px solid black; background-color: #FFFFFF;">
+  <div id="enemy_dead_icon" style="position: relative; top: 10px; left: 10px; width: 32px; height: 32px;"></div>
+  <div id="enemy_dead_text" style="position: relative; top: -14px; left: 52px; width: 228px; height: 14px;" class="planet_info"></div>
+</div>
+
+
+<div id="game_lost_win" style="display: none;" title="You Failed">
+  <p>You have snatched defeat from the jaws of victory.  The human race has perished.</p>
+</div>
+
+<div id="game_won_name_win" style="display: none;" title="You Won">
+  <p>You have succeeded where others have never failed.  Your name will be added to the Hall of Victory.</p>
+  <div id="game_won_name_tips" style="display: none"></div>
+  
+
+  <form onsubmit="return false;">
+  <fieldset>
+    <label for="username">Name</label>
+    <input type="text" name="username" id="username" class="text ui-widget-content ui-corner-all" value="I Forgot My Name"/>
+  </fieldset>
+  </form>
+</div>
+
+<div id="score_win" style="display: none;" title="Scores">
+  <table id="scores" class="ui-widget ui-widget-content" width="100%">
+    <thead>
+      <tr class="ui-widget-header">
+        <th width="1%">Rank</th>
+        <th width="45%">Name</th>
+        <th width="22%">Score</th>
+        <th width="32%">Date</th>
+      </tr>
+    </thead>
+    <tbody>
+    </tbody>
+  </table>
+</div>
+
+<div id="newgame_win" style="display: none;" title="Start New Game?">
+  <p>Are you sure you wish to start a new game.  The existing game will be lost.</p>
+</div>
+
+<div id="about_win" style="display: none;" title="About Galactic Empire">
+  <p>Galactic Empire was developed for the web by Robert Landrum, <nobr>&copy; 2010</nobr>.</P>  
+  <p>Galactic Empire is based on an original Mac OS 7 program developed by Craig Landrum and Jim Small, <nobr>&copy; 1990</nobr>.  Their game was based on an earlier game called 'Galax' by Keith Rieck, <nobr>&copy; 1988</nobr>.</p>
+</div>
+
+</body>
+</html>
