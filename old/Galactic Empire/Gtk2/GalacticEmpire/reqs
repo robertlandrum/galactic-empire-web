@@ -1,0 +1,5 @@
+perl
+libgtk2-perl
+libgnome2-perl
+libdbi-perl
+libdbd-sqlite3-perl

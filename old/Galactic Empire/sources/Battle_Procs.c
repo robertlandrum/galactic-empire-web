@@ -1,0 +1,2845 @@
+#include "Galaxy.h"
+#include <stdio.h>
+#include <Menus.h>
+#include <Icons.h>
+#include <Sound.h>
+#include <Balloons.h>
+//#include <math.h>
+#include <fp.h>
+//#include <SANE.h>
+//#include <Color.h>
+
+#include <stdlib.h>
+
+extern	Rect			gamerect;
+extern	WindowPtr		gamewind;
+extern	PlanetRec		precs[PLANETROWS*PLANETCOLS];
+extern	TransRec		trecs[MAXTRANSRECS];
+extern	short			feedtolist[PLANETROWS*PLANETCOLS];
+
+extern	short			tottrecs;
+extern	short			totplanets;
+extern	short			elist[8];			/* Holds our enemy list */
+extern	short			dlist[8];			/* Dead enemy list 		*/
+extern	short			totenemies;			/* Count of our enemies */
+extern	short			currinput;
+extern	short			gamesaved;
+extern	short			selected;
+
+extern	short			fmplanet;
+extern	short			toplanet;
+extern	short			curryear;
+extern	Rect			inforectall;
+extern	Rect			launchrect;
+
+extern	CIconHandle		planetIcons[10];
+
+short					wehavewon = 0;
+short					wehavelost = 0;
+short					fastbattles = 0;	/* Do fast battles if=1; */
+
+GubruRec				gubru;
+CzinRec					czin;
+ArachRec				arach;
+MutantRec				mutant;
+NukeRec					nuke;
+BozoRec					bozo;
+BotsRec					bots;
+
+static	Handle			deadHandle[12] = {0};
+static	MenuHandle		deadMenu[12] = {0};
+
+static	Rect			savescnrect;
+static	CGrafPort   	saveCGrafPort;
+
+void
+Move_Gubrus()
+{
+short				moves[4];						/* planet # to move to	*/
+short				wmove[4];						/* weight of move		*/
+short				gcount;
+short				agress;
+short				i, j, k;
+short				d;								/* distance to planet 	*/
+short				w, w1;							/* moves weight 		*/
+short				s;
+								
+if (curryear == 0) {
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++)
+		if (precs[i].owns == GUBRU) {
+			gubru.home = i;
+			break;
+		}
+	gubru.enemy = ((long) rand() * totenemies) / RAND_MAX;
+	gubru.enemy = (elist[gubru.enemy] == GUBRU) ? HUMAN : elist[gubru.enemy];
+	gubru.pcount = gcount = 1;
+}
+
+/* determine aggressive or conservative strategy */
+agress = gcount = 0;
+for (i = 0; i < PLANETROWS*PLANETCOLS; i++)
+	if (precs[i].owns == GUBRU)
+		gcount++;
+if (gcount > gubru.pcount || curryear <= 80)
+	agress = 1;
+if (gcount < gubru.pcount)
+	agress = -1;
+gubru.pcount = gcount; 	
+
+/* check to see if the enemy is DEAD */
+for (i = 0; i < totenemies; i++) {
+	if (elist[i] == gubru.enemy && dlist[i]) {
+		j = ((long) rand() * totenemies) / RAND_MAX;
+		gubru.enemy = (elist[j] == GUBRU) ? HUMAN : elist[j];
+	}
+}
+	
+/* determine home planet moves */
+if (precs[gubru.home].owns == GUBRU) {
+	wmove[0] = wmove[1] = wmove[2] = wmove[3] = 0;	
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+		if (precs[i].owns == NOPLANET) continue;
+		if (precs[i].owns == GUBRU) continue;
+		if (i == gubru.home) continue;
+		d = calc_dsquare(gubru.home, i);
+
+		switch (agress) {
+		case -1:
+			w1 = (precs[i].owns != INDEPENDENT);
+			w = (w1 * 40) / d;
+			break;
+		case 0:
+			w1 = ((precs[i].owns == gubru.enemy) || 
+				(precs[i].owns != GUBRU && GETOWNED(precs[i], GUBRU))) ? 3 : 1;
+			w1 = (long) (w1 * (80 + (curryear/2))) / d;
+			w = (long) w1 * (((curryear > 150) && precs[i].owns == INDEPENDENT) ? 0 : 1);
+			break;
+		case 1:
+			w1 = (precs[i].owns == gubru.enemy) ? 3 : 1;
+			w1 *= (precs[i].owns == INDEPENDENT) ? 2 : 1;
+			w = ((long) w1 * (200 + (curryear/2))) / d;
+			break;
+		}
+		
+		w += ((long)rand() * 5)/RAND_MAX;
+		
+		for (j = 0; j < 4; j++)
+			if (w > wmove[j]) {
+				for (k = 3; k > j; k--) {
+					wmove[k] = wmove[k-1];
+					moves[k] = moves[k-1];
+				}
+				moves[j] = i;
+				wmove[j] = w;
+				break;
+			}			
+	}
+	
+	/* --- home planet strategy --- */
+	k = precs[gubru.home].ships;
+
+	switch(agress) {
+	case -1:	s = k / 5; break;
+	case 0:		s = (curryear < 100) ? ((k * 3) / 5) : ((k * 2) / 5); break;
+	default:
+	case 1:		s = (curryear < 100) ? ((k * 3) / 4) : ((k * 1) / 2); break;
+	}
+
+	for (i = 3; i >= 0; i--) {						/* go thru 4 best moves		*/
+		j = s / (i + 1);							/* number of ships			*/
+
+		k = moves[i];								/* the record number saved	*/
+		if (GETOWNED(precs[k], GUBRU ||
+			precs[k].homeplanet)) {			/* if we've ever owned it	*/
+			if (j < (precs[k].ships * 4)/3)			/* make sure we can take it	*/
+				continue;							/* no, try next planet		*/
+		} else
+			if (j < (15 + (curryear/2)) &&
+				j < 150) continue;					/* unowned minimum			*/
+				
+		if (wmove[i] <= 0) continue;
+		if (j > 0) {
+			send_ships(gubru.home, k, j, GUBRU);
+			s -= j;
+		}
+	}
+
+#ifdef XXX	
+	for (i = 0; i < 3; j--) {						/* go thru W best moves		*/
+		l = moves[j];								/* the record number saved	*/
+		if (l < 0) continue;						/* no planet				*/
+
+		if (precs[l].owns != BOTS) {
+			if (GETOWNED(precs[l], BOTS) ||
+				precs[l].homeplanet) {				/* if we've ever owned it	*/
+				k = (precs[l].ships * 3L)/2;		/* make sure we can take it	*/
+			} else {
+				k = 10 + (curryear/3);
+				if (k > 80) k = 80;
+			}
+		} else {
+			k = s / w;
+		}
+								
+		if (wmove[j] <= 0) continue;
+		if (k > 0 && k < s) {
+/*printf("Send from %d,%d to %d,%d s=%d\n", precs[i].col, precs[i].row,
+precs[l].col, precs[l].row, k);*/
+			smove[j] = k;
+			s -= k;
+		}
+	}
+
+	for (j = w; j >= 0; j--) {						/* go thru W best moves		*/
+		k = s / (j + 1);							/* number of ships			*/
+		l = moves[j];								/* the record number saved	*/
+		if (l < 0) continue;						/* no planet				*/
+		if (smove[j] > 0) {
+			smove[j] += k;
+			send_ships(i, l, smove[j], BOTS);
+			s -= k;
+		}
+	}
+
+#endif
+
+
+
+} else {
+	j = -1;
+	k = 0;
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+		if (precs[i].owns != GUBRU) continue;
+		if (precs[i].industry > k) {
+			j = i;
+			k = precs[i].industry;
+		}
+	}
+	if (j > 0)
+		gubru.home = j;
+}
+
+/* --- other planets --- */
+for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+	if (precs[i].owns != GUBRU) continue;
+	if (i == gubru.home) continue;
+	switch (agress) {
+	case -1:	k = 6; break;
+	case 0:		k = 15; break;
+	default:
+	case 1:		k = 10; break;
+	}
+	if (precs[i].ships > k) {						
+		if ( (((long) rand() * 2) / RAND_MAX) == 0) continue;	/* 1 in 2 do nothing */
+		s = precs[i].ships - k;
+		if (s > k)
+			if (s) send_ships( i, gubru.home, s, GUBRU );
+	}
+}
+}
+
+void
+Move_Czins()
+{
+short				moves[3];
+short				wmove[3];				
+short				ccount;
+short				agress;
+short				i, j, k, l;
+short				d;								/* distance to planet */
+short				w;								/* moves weight */
+short				s;
+								
+if (curryear == 0) {
+	czin.homelost = FALSE;
+	/* get home planet */
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++)
+		if (precs[i].owns == CZIN) {
+			czin.home = i;
+			break;
+		}
+	/* pick closest enemy */
+	w = 9999;
+	j = -1;
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+		if (i == czin.home) continue;
+		if (precs[i].homeplanet)
+			d = calc_dsquare( czin.home, i );
+			if (d < w) {
+				w = d;
+				j = precs[i].owns;
+			}
+	}
+	
+	if (j >= 0) czin.enemy = j;
+	czin.pcount = ccount = 1;
+}
+
+/* determine aggressive or conservative strategy */
+agress = ccount = 0;
+for (i = 0; i < PLANETROWS*PLANETCOLS; i++)
+	if (precs[i].owns == CZIN)
+		ccount++;
+if ((ccount > (czin.pcount + czin.homelost)) || curryear <= 60)
+	agress = 1;
+
+if (ccount < czin.pcount)
+	agress = -1;
+czin.pcount = ccount; 	
+
+/* check to see if the enemy is DEAD */
+for (i = 0; i < totenemies; i++) {
+	if (elist[i] == czin.enemy && dlist[i]) {
+		w = 9999;
+		k = -1;
+		for (j = 0; j < PLANETROWS*PLANETCOLS; j++) {
+			if (j == czin.home) continue;
+			if (precs[j].owns == CZIN) continue;
+			if (precs[j].homeplanet)
+				d = calc_dsquare( czin.home, j );
+				if (d < w) {
+					w = d;
+					k = precs[i].owns;
+				}
+		}
+		if (k >= 0) czin.enemy = k;
+	}
+}
+
+/* determine home planet moves */
+if (precs[czin.home].owns == CZIN) {
+	wmove[0] = wmove[1] = wmove[2] = 0;	
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+		if (precs[i].owns == NOPLANET) continue;
+		if (precs[i].owns == CZIN) continue;
+		if (i == czin.home) continue;
+		
+		d = calc_dsquare( czin.home, i );
+
+		switch (agress) {
+		case -1:
+			w = (precs[i].owns != INDEPENDENT) * 30 / d;
+			break;
+		case 0:
+			w = ((long) (precs[i].owns == czin.enemy) ? 3 : 1) * 
+				((curryear > 150) && (precs[i].owns == INDEPENDENT) ? 0 : 1) * 
+				(120 + (curryear/2)) / d;
+			break;
+		case 1:
+			w = ((long) (precs[i].owns == czin.enemy) ? 3 : 1) * 
+				((curryear > 180) && (precs[i].owns == INDEPENDENT) ? 0 : 1) * 
+				(200 + (curryear/2)) / d;
+			break;
+		}
+		
+		w += ((long) rand() * 10) / RAND_MAX;
+		
+		for (j = 0; j < 3; j++)
+			if (w > wmove[j]) {
+				for (k = 2; k > j; k--) {
+					wmove[k] = wmove[k-1];
+					moves[k] = moves[k-1];
+				}
+				moves[j] = i;
+				wmove[j] = w;
+				break;
+			}			
+	}
+	
+	/* --- home planet strategy --- */
+	switch(agress) {
+	case -1:	s = 0; break;
+	case 0:		s = (precs[czin.home].ships * 1) / 2; break;
+	default:
+	case 1:		s = (precs[czin.home].ships * 4) / 5; break;
+	}
+	
+	for (i = 2; i >= 0; i--) {						/* go thru 3 best moves		*/
+		j = s / (i + 1);							/* number of ships			*/
+
+		k = moves[i];								/* the record number saved	*/
+		if (GETOWNED(precs[k], CZIN) ||
+			precs[k].homeplanet) {				/* if we've ever owned it	*/
+			if (j < (precs[k].ships * 3)/2)			/* make sure we can take it	*/
+				continue;							/* no, try next planet		*/
+		} else
+			if (j < (30 + (curryear/2)) &&
+				j < 200) continue;					/* unowned minimum			*/
+		
+		if (j < 10) continue;		
+		if (wmove[i] <= 0) continue;
+		if (j > 0) {
+			send_ships(czin.home, k, j, CZIN);
+			s -= j;
+		}
+	}
+
+} else {
+	j = -1;
+	k = 0;
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+		if (precs[i].owns != CZIN) continue;
+		if (precs[i].industry > k) {
+			j = i;
+			k = precs[i].industry;
+		}
+	}
+	if (j >= 0) {
+		czin.home = j;
+		czin.homelost = TRUE;
+	}
+}
+
+/* --- other planets --- */
+for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+	if (precs[i].owns != CZIN) continue;
+	if (i == czin.home) continue;
+	l = 0;
+	switch (agress) {
+	case -1:	k = 5; 							/* send all but N home */
+				l = 0;
+				break;
+	case 0:		j = ((long)rand() * 5) / RAND_MAX;
+				switch (j) {
+				case 5:
+				case 0:		k = 20; 			/* send all but N home */
+							break;
+				case 1:		
+				case 2:		k = precs[i].ships;		/* send none home	*/
+							l = 0;					/* send none elsewhere */
+							break;
+				case 3:
+				case 4:		k = precs[i].ships;		/* send none home	*/
+							l = k - 10;				/* send N somewhere	*/
+							break;
+				};
+				break;	
+	default:
+	case 1:		j = ((long) rand() * 6) / RAND_MAX;
+				switch (j) {
+				case 6:
+				case 0:		k = (precs[i].ships * 4) / 5; 	/* 1/5 home	*/
+							l = 0;					/* send none onwards */
+							break;
+				default:
+							k = precs[i].ships;		/* send none home	*/
+							l = k - 10;				/* send N somewhere	*/
+							break;
+				};
+				break;
+	}
+
+	/* --- k is number of ships to not send home --- */
+	if (precs[i].ships > k) {
+		s = precs[i].ships - k;
+		d = calc_dsquare(i, czin.home);
+		if (d < 140 + (s / 5)) { 
+			if (s > 0) 
+				send_ships(i, czin.home, s, CZIN);
+		}
+	}
+
+	/* --- l is the number to send onwards --- */
+	if (l <= 0) continue;							/* get next planet				*/
+	s = l;											/* save off value				*/
+	for (j = 0; j < 3; j++) wmove[j] = 0;			/* clear move weights			*/		
+	for (j = 0; j < PLANETROWS*PLANETCOLS; j++) {
+		if (precs[j].owns == NOPLANET) continue;
+		if (precs[j].owns == CZIN) continue;
+		if (precs[j].owns == INDEPENDENT && curryear > 80) continue;
+		if (j == czin.home) continue;
+		d = calc_dsquare(i, j);
+
+		if (d == 0) continue;
+		w = 50 / d;									/* look up to 7 away			*/
+		w += ((long)rand() * 10) / RAND_MAX;		/* add a random factor			*/			
+
+		for (k = 0; k < 3; k++)
+			if (w > wmove[k]) {
+				for (l = 2; l > k; l--) {
+					wmove[l] = wmove[l-1];
+					moves[l] = moves[l-1];
+				}
+				moves[k] = i;						/* save planet number			*/
+				wmove[k] = w;						/* save weight of move			*/
+				break;
+			}			
+
+	}
+
+	for (j = 2; j >= 0; j--) {						/* go thru 3 best moves		*/
+		k = s / (j + 1);							/* number of ships			*/
+
+		l = moves[j];								/* the record number saved	*/
+		if (GETOWNED(precs[l], CZIN) ||
+			precs[k].homeplanet) {				/* if we've ever owned it	*/
+			if (k < (precs[l].ships * 3)/2)			/* make sure we can take it	*/
+				continue;							/* no, try next planet		*/
+		} else
+			if (k < (15 + (curryear/3)) &&
+				k < 100) continue;					/* unowned minimum			*/
+		
+		if (k < 10) continue;						/* send at least 10			*/		
+		if (wmove[j] <= 0) continue;				/* no worthy move			*/
+		if (k > 0) {								/* ships to send > 0		*/
+			send_ships(i, l, k, CZIN);
+			s -= k;
+		}
+	}
+
+}
+}
+
+void
+Move_Blobs()
+{
+short				i, j;
+short				s;
+
+for (i = 0; i < totplanets; i++) {
+	if (precs[i].owns == BLOBS) {
+		for (j = 0; j < totplanets; j++) {
+			if (precs[j].owns != BLOBS &&
+				precs[j].homeplanet &&
+				(precs[j].ships * 2) < precs[i].ships ) {
+				if ((((long) rand() * 3) / RAND_MAX) == 0)
+					continue;
+				s = precs[j].ships * 2;
+				s += calc_time( i, j );
+				if (precs[i].ships > s) 
+					send_ships(i, j, s, BLOBS);
+			}
+		}
+	}
+}
+}
+
+void
+Move_Bots()
+{
+short				moves[6];						/* startup 6 best moves	*/
+short				wmove[6];
+short				smove[6];
+register short		i, j, k, l;				
+short				d;								/* distance to planet */
+short				w, w1;							/* weight of move	*/
+short				s;
+
+/* --- home planet year 0 strategy - grab some production --- */
+if (curryear == 0) {
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++)
+		if (precs[i].owns == BOTS) {
+			bots.home = i;
+			break;
+		}
+
+	for (j = 0; j < 6; j++) wmove[j] = 9999;
+
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+		if (precs[i].owns == NOPLANET) continue;
+		
+		d = calc_dsquare(i, bots.home);
+
+		for (j = 0; j < 6; j++) {
+			if (d < wmove[j]) {
+				for (k = 5; k > j; k--) {
+					wmove[k] = wmove[k-1];
+					moves[k] = moves[k-1];
+				}
+				moves[j] = i; 						/* planet # to attack	*/
+				wmove[j] = d;						/* weight of move		*/
+				break;
+			}			
+		}
+	}
+	
+	for (i = 0; i < 6; i++) {
+		send_ships( bots.home, moves[i], 15, BOTS);
+	}
+	bots.enemy = INDEPENDENT;				
+	return;
+}
+
+/* --- pick an enemy every 8 turns --- */
+if ((curryear % 80) == 0) {
+	w = 9999;
+	k = -1;
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+		if (precs[i].owns == BOTS || precs[i].owns == NOPLANET ||
+		precs[i].owns == INDEPENDENT) continue;
+		d = calc_dsquare( bots.home, i );
+		if (d < w) {
+			w = d;								/* save weight of move */
+			k = precs[i].owns;					/* save off enemy */
+		}
+	}
+	
+	if (w < 9999 && k != -1) {
+		bots.enemy = k;
+		for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+			if (precs[i].owns == k && precs[i].homeplanet) {
+				bots.ehome = i;
+				break;
+			}
+		}
+	}
+
+/*printf("Robots enemy = %d home planet = %d,%d\n", bots.enemy, 
+	precs[bots.ehome].col, precs[bots.ehome].row);*/
+}
+
+/* --- the remainder of the game logic --- */
+for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+	if (precs[i].owns == NOPLANET) continue;
+	if (precs[i].owns != BOTS) continue;
+	
+	/* --- home planet strategy --- */
+	if (i == bots.home && precs[i].owns == BOTS) {
+
+		wmove[0] = wmove[1] = wmove[2] = wmove[3] = 0;
+		
+		/* --- compute the best moves --- */
+		for (j = 0; j < PLANETROWS*PLANETCOLS; j++) {
+			if (i == j) continue;
+			if (precs[j].owns == NOPLANET) continue;
+			
+			if (curryear > 90 && precs[j].owns != BOTS &&
+				precs[j].owns != bots.enemy) continue;
+			
+			d = calc_dsquare( i, j );
+			d = d / 36;
+			if (d < 1) d = 1;
+			if (d > 7) d = 7;
+			w1 = 0;
+			
+			if (j == bots.ehome && ((2L * precs[j].ships) < precs[i].ships))
+				w1 += 3;
+				
+			if (precs[j].owns == INDEPENDENT && curryear < 100) w1+=2;
+			if (precs[j].owns == bots.enemy) {
+				if (d < 2)
+					w1 += 9;
+				else
+					w1 += 4;
+			}
+								
+			if (precs[j].owns == BOTS) {
+				if (precs[j].industry > 3 && d > 1)
+					w1 += 7;
+				else
+					if (curryear < 80)
+						w1++;
+			}
+						
+			w = ((long) w1 * (36 + curryear/5)) / d;
+			w += ((long) rand() * 15) / RAND_MAX;
+
+/*printf("Move from home to %d,%d w=%d\n", precs[j].col, precs[j].row, w);*/
+			
+			for (k = 0; k < 4; k++)
+				if (w > wmove[k]) {
+					for (l = 3; l > k; l--) {
+						wmove[l] = wmove[l-1];
+						moves[l] = moves[l-1];
+					}
+					moves[k] = j;
+					wmove[k] = w;
+					break;
+				}			
+		}
+
+		/* --- now move the ships --- */	
+		s = (precs[i].ships * 2) / 3;
+		smove[0] = smove[1] = smove[2] = smove[3] = 0;
+		if (s > 80) {
+			w = (((long) rand() * 2)/RAND_MAX) + 2;			/* go thru N best moves		*/
+			if (w < 0 || w > 3) w = 1;						/* safety					*/
+
+#ifdef XXX
+			for (j = 3; j >= 0; j--) {						/* go thru 4 best moves		*/
+				k = s / (j + 1);							/* number of ships			*/
+		
+				l = moves[j];								/* the record number saved	*/
+				if (l < 0) continue;						/* no planet				*/
+
+				if (precs[l].owns != BOTS) {
+					if (GETOWNED(precs[l], BOTS) ||
+						precs[l].homeplanet) {				/* if we've ever owned it	*/
+						if (k < (precs[l].ships * 3L)/2)			/* make sure we can take it	*/
+							continue;							/* no, try next planet		*/
+					} else
+						if (k < (10 + (curryear/3)) &&
+							k < 150) continue;					/* unowned minimum			*/
+				}
+										
+				if (wmove[j] <= 0) continue;
+				if (k > 0) {
+/*printf("Send from %d,%d to %d,%d s=%d\n", precs[i].col, precs[i].row,
+	precs[l].col, precs[l].row, k);*/
+					send_ships(i, l, k, BOTS);
+					s -= k;
+				}
+			}
+#endif
+			for (j = 0; j < w; j--) {						/* go thru 4 best moves		*/
+				l = moves[j];								/* the record number saved	*/
+				if (l < 0) continue;						/* no planet				*/
+
+				if (precs[l].owns != BOTS) {
+					if (GETOWNED(precs[l], BOTS) ||
+						precs[l].homeplanet) {				/* if we've ever owned it	*/
+						k = (precs[l].ships * 3L)/2;		/* make sure we can take it	*/
+					} else
+						k = 10 + (curryear/3);
+						if (k > 150) k = 150;
+				} else {
+					k = s / w;
+				}
+										
+				if (wmove[j] <= 0) continue;
+				if (k > 0 && k < s) {
+/*printf("Send from %d,%d to %d,%d s=%d\n", precs[i].col, precs[i].row,
+	precs[l].col, precs[l].row, k);*/
+					send_ships(i, l, k, BOTS);
+					smove[j] = k;
+					s -= k;
+				}
+			}
+
+			for (j = 3; j >= 0; j--) {						/* go thru 4 best moves		*/
+				k = s / (j + 1);							/* number of ships			*/
+				l = moves[j];								/* the record number saved	*/
+				if (l < 0) continue;						/* no planet				*/
+				if (smove[j] > 0) {
+					smove[j] += k;
+					send_ships(i, l, smove[j], BOTS);
+					s -= k;
+				}
+			}
+
+		}
+		
+		continue;
+	} /* end home planet */
+	
+	/* --- other planet --- */
+	
+	if ((((long) rand() * 2) / RAND_MAX) == 0)
+		continue;
+	
+	/* --- compute the best moves --- */
+
+	wmove[0] = wmove[1] = wmove[2] = wmove[3] = 0;
+	for (j = 0; j < PLANETROWS*PLANETCOLS; j++) {
+		if (precs[j].owns == NOPLANET) continue;
+		if (precs[j].owns == INDEPENDENT && curryear > 90) continue;
+		if (i == j) continue;
+		
+		d = calc_dsquare( i, j );
+		d = d / 25;
+		if (d < 1) d = 1;
+		if (d > 5) d = 6;
+		
+		w1 = 0;
+		
+		if (j == bots.ehome && precs[j].ships < 2 * precs[i].ships)
+			w1 += 2;
+				
+		if (precs[j].owns == INDEPENDENT) w1++;
+		if (precs[j].owns == bots.enemy) w1 += 5;
+		if (j != bots.home && 
+			precs[j].owns == BOTS && precs[j].industry > precs[i].industry) 
+				w1 += (precs[j].industry - precs[i].industry);
+
+		if (j == bots.home) {
+			if (precs[j].owns != BOTS)
+				w1 += 10;
+			else if (curryear > 90 && d < 2)
+				w1+=3;
+			else
+				w1++;
+		}
+		
+#ifdef XXX
+		for (k = 0; k < PLANETROWS*PLANETCOLS; k++) {
+			if (j == k) continue;
+			if (precs[k].owns == BOTS && calc_dsquare(j, k) < 25)
+				w1++;
+		}
+#endif
+		
+		w = ((long) w1 * (25)) / d;
+		w += ((long) rand() * 10) / RAND_MAX;
+
+/*printf("Move from %d,%d to %d,%d w=%d\n", precs[i].col, precs[i].row,
+		precs[j].col, precs[j].row, w);*/
+		
+		for (k = 0; k < 4; k++)
+			if (w > wmove[k]) {
+				for (l = 3; l > k; l--) {
+					wmove[l] = wmove[l-1];
+					moves[l] = moves[l-1];
+				}
+				moves[k] = j;
+				wmove[k] = w;
+				break;
+			}			
+	}
+
+	/* --- now move the ships --- */
+	if (precs[i].industry)	
+		s = ((long)precs[i].ships * 3) / 4;
+	else
+		s = precs[i].ships;
+
+	smove[0] = smove[1] = smove[2] = smove[3] = 0;
+		
+	if (s > (curryear/4) || s > 30) {
+
+		w = (((long) rand() * 3)/RAND_MAX) + 1;			/* go thru N best moves		*/
+		if (w < 0 || w > 3) w = 1;						/* safety					*/
+
+#ifdef XXX		
+		for (j = w; j >= 0; j--) {						/* go thru W best moves		*/
+			k = s / (j + 1);							/* number of ships			*/
+	
+			l = moves[j];								/* the record number saved	*/
+			if (l < 0) continue;						/* no planet				*/
+
+			if (precs[l].owns != BOTS) {
+				if (GETOWNED(precs[l], BOTS) ||
+					precs[l].homeplanet) {				/* if we've ever owned it	*/
+					if (k < (precs[l].ships * 3L)/2)	/* make sure we can take it	*/
+						continue;						/* no, try next planet		*/
+				} else
+					if (k < (10 + (curryear/4)) &&
+						k < 80) continue;				/* unowned minimum			*/
+			}
+								
+			if (wmove[j] <= 0) continue;
+			if (k > 0) {
+				send_ships(i, l, k, BOTS);
+/*printf("Send from %d,%d to %d,%d s=%d\n", precs[i].col, precs[i].row,
+	precs[l].col, precs[l].row, k);*/
+				s -= k;
+			}
+		}
+#endif
+
+		for (j = 0; j < w; j++) {						/* go thru W best moves		*/
+			l = moves[j];								/* the record number saved	*/
+			if (l < 0) continue;						/* no planet				*/
+
+			if (precs[l].owns != BOTS) {
+				if (GETOWNED(precs[l], BOTS) ||
+					precs[l].homeplanet) {				/* if we've ever owned it	*/
+					k = (precs[l].ships * 3L)/2;		/* make sure we can take it	*/
+				} else {
+					k = 10 + (curryear/3);
+					if (k > 80) k = 80;
+				}
+			} else {
+				k = s / w;
+			}
+									
+			if (wmove[j] <= 0) continue;
+			if (k > 0 && k < s) {
+/*printf("Send from %d,%d to %d,%d s=%d\n", precs[i].col, precs[i].row,
+precs[l].col, precs[l].row, k);*/
+				smove[j] = k;
+				s -= k;
+			}
+		}
+
+		for (j = w; j >= 0; j--) {						/* go thru W best moves		*/
+			k = s / (j + 1);							/* number of ships			*/
+			l = moves[j];								/* the record number saved	*/
+			if (l < 0) continue;						/* no planet				*/
+			if (smove[j] > 0) {
+				smove[j] += k;
+				send_ships(i, l, smove[j], BOTS);
+				s -= k;
+			}
+		}
+
+	}
+}
+}
+
+void
+Move_Arachs()
+{
+short				acount;
+short				moves[4];
+short				wmove[4];				
+short				agress;
+short				i, j, k, l;
+short				d;								/* distance to planet 	*/
+short				w, w1;							/* moves weight 		*/
+short				s;
+
+if (curryear == 0) {
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++)
+		if (precs[i].owns == ARACHS) {
+			arach.home = i;
+			break;
+		}
+	arach.enemy = (long) rand() * totenemies / RAND_MAX;
+	arach.enemy = (elist[arach.enemy] == ARACHS) ? HUMAN : elist[arach.enemy];
+	arach.pcount = acount = 1;
+}
+
+/* determine aggressive or conservative strategy */
+agress = acount = 0;
+for (i = 0; i < PLANETROWS*PLANETCOLS; i++)
+	if (precs[i].owns == ARACHS)
+		acount++;
+if (acount > arach.pcount || curryear <= 80)
+	agress = 1;
+if (acount < arach.pcount)
+	agress = -1;
+arach.pcount = acount; 	
+
+/* check to see if the enemy is DEAD */
+for (i = 0; i < totenemies; i++) {
+	if (elist[i] == arach.enemy && dlist[i]) {
+		i = ((long) rand() * totenemies) / RAND_MAX;
+		arach.enemy = (elist[i] == ARACHS) ? HUMAN : elist[i];
+	}
+}
+
+/* determine home planet moves */
+for (i = 0; i < 4; i++) wmove[i] = 0;
+if (precs[arach.home].owns == ARACHS) {
+	wmove[0] = wmove[1] = wmove[2] = wmove[3] = 0;
+	moves[0] = moves[1] = moves[2] = moves[3] = -1;
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+		if (precs[i].owns == NOPLANET) continue;
+		if (precs[i].owns == ARACHS) continue;
+		if (i == arach.home) continue;
+
+		d = calc_dsquare( arach.home, i );
+
+		switch (agress) {
+		case -1:
+			w1 = (precs[i].owns != INDEPENDENT);
+			w = (w1 * 40) / d;
+			break;
+		case 0:
+			w1 = ((precs[i].owns == arach.enemy) || 
+				(precs[i].owns != ARACHS && GETOWNED(precs[i], ARACHS))) ? 3 : 1;
+			w1 *= (curryear > 90 && precs[i].owns == INDEPENDENT) ? 0 : 1;
+			w = ((long) w1 * (90 + (curryear/2))) / d;
+			break;
+		case 1:
+			w1 = (precs[i].owns == arach.enemy) ? 3 : 1;
+			w1 *= (curryear > 90 && precs[i].owns == INDEPENDENT) ? 0 : 1;
+			w = ((long) w1 * (200 + (curryear/2))) / d;
+			break;
+		}
+		
+		w += ((long) rand() * 5) / RAND_MAX;
+		
+		for (j = 0; j < 4; j++)
+			if (w > wmove[j]) {
+				for (k = 3; k > j; k--) {
+					wmove[k] = wmove[k-1];
+					moves[k] = moves[k-1];
+				}
+				moves[j] = i;
+				wmove[j] = w;
+				break;
+			}			
+	}
+	
+	/* --- home planet strategy --- */
+	k = precs[arach.home].ships;
+
+	switch(agress) {
+	case -1:	s = k / 4; break;
+	case 0:		s = (curryear < 100) ? ((k * 3) / 5) : ((k * 1) / 2); break;
+	default:
+	case 1:		s = (curryear < 100) ? ((k * 3) / 4) : ((k * 3) / 5); break;
+	}
+	
+	for (i = 3; i >= 0; i--) {						/* go thru 4 best moves		*/
+		j = s / (i + 1);							/* number of ships			*/
+
+		k = moves[i];								/* the record number saved	*/
+		if (k < 0) continue;						/* no planet				*/
+		if (GETOWNED(precs[k], ARACHS) ||
+			precs[k].homeplanet) {			/* if we've ever owned it	*/
+			if (j < (precs[k].ships * 4)/3)			/* make sure we can take it	*/
+				continue;							/* no, try next planet		*/
+		} else
+			if (j < (10 + (curryear/2)) &&
+				j < 100) continue;					/* unowned minimum			*/
+				
+		if (wmove[i] <= 0) continue;
+		if (j > 0) {
+			send_ships(arach.home, k, j, ARACHS);
+			s -= j;
+		}
+	}
+
+} 
+
+/* always pick largest production planet as home */
+j = -1;
+k = 0;
+for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+	if (precs[i].owns != ARACHS) continue;
+	if (precs[i].industry > k) {
+		j = i;
+		k = precs[i].industry;
+	}
+}
+if (j > 0)
+	arach.home = j;
+
+/* --- other planets --- */
+for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+	if (precs[i].owns != ARACHS) continue;
+	if (i == arach.home) continue;
+	l = 0;
+	switch (agress) {
+	case -1:	j = ((long) rand() * 2) / RAND_MAX;
+				switch(j) {
+				case 0:		k = 5; 							/* send all but N home */
+							l = 0;
+							break;
+				default:	k = precs[i].ships;
+							break;
+				}
+				break;
+	case 0:		j = ((long) rand() * 6) / RAND_MAX;
+				switch (j) {
+				case 5:
+				case 0:		k = 10; 			/* send all but N home */
+							break;
+				case 1:		k = 20;
+							break;
+				case 2:		k = precs[i].ships;		/* send none home	*/
+							break;
+				default:	k = precs[i].ships;		/* send none home	*/
+							l = k - 6;				/* send N somewhere	*/
+							break;
+				};
+				break;	
+	case 1:		j = ((long) rand() * 6) / RAND_MAX;
+				switch (j) {
+				case 6:
+				case 0:		k = 10; 			/* send all but N home 	*/
+							break;
+				case 1:		k = (precs[i].ships * 1) / 3; 	/* 2/3 home	*/
+							break;
+				case 2:		k = (precs[i].ships * 2) / 3;	/* 1/3 home */
+							l = k - 10;						/* avail	*/
+							break;
+				default:	k = precs[i].ships;		/* send none home	*/
+							l = k;					/* send N somewhere	*/
+							break;
+				};
+				break;
+	}
+
+	
+	/* --- k is number of ships to not send home --- */
+	if (precs[i].ships > k) {
+		s = precs[i].ships - k;
+		d = calc_dsquare(i, arach.home);
+		if (d < 150 + (s / 5)) { 
+			if (s > 0) 
+				send_ships(i, arach.home, s, ARACHS);
+		}
+	}
+
+	/* --- l is the number to send onwards --- */
+	if (l <= 0) continue;							/* get next planet			*/
+	s = l;											/* ships to send on			*/
+	for (j = 0; j < 3; j++) wmove[j] = 0;		
+	for (j = 0; j < PLANETROWS*PLANETCOLS; j++) {
+		if (precs[j].owns == NOPLANET) continue;
+		if (precs[j].owns == INDEPENDENT && curryear > 80) continue;
+		if (j == arach.home) continue;
+		if (j == i) continue;
+		d = calc_dsquare(i, j);
+
+		if (d == 0) continue;
+		w = 50 / d;
+		w += ((long)rand() * 5) / RAND_MAX;
+
+		for (k = 0; k < 3; k++)
+			if (w > wmove[k]) {
+				for (l = 2; l > k; l--) {
+					wmove[l] = wmove[l-1];
+					moves[l] = moves[l-1];
+				}
+				moves[k] = j;
+				wmove[k] = w;
+				break;
+			}			
+
+	}
+
+	for (j = 2; j >= 0; j--) {						/* go thru 3 best moves		*/
+		k = s / (j + 1);							/* number of ships			*/
+
+		l = moves[j];								/* the record number saved	*/
+		if (GETOWNED(precs[l], ARACHS) ||
+			precs[l].homeplanet) {			/* if we've ever owned it	*/
+			if (k < ((long) precs[l].ships * 4)/3)			/* make sure we can take it	*/
+				continue;							/* no, try next planet		*/
+		} else
+			if (k < (15 + (curryear/3)) && 
+			k < 120) continue;						/* unowned minimum			*/
+				
+		if (wmove[j] <= 0) continue;
+		if (k > 0) {
+			send_ships(i, l, k, ARACHS);
+			s -= k;
+		}
+	}
+
+}
+}
+
+void
+Move_Mutants()
+{
+short				mcount;
+short				moves[6];						/* startup 6 best moves	*/
+short				wmove[6];
+short				i, j, k;
+short				s, d, d1;
+short				agress;
+short				w, w1;
+
+/* --- home planet year 0 strategy - grab some production --- */
+if (curryear == 0) {
+	mutant.stage = -1;
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++)
+		if (precs[i].owns == MUTANTS) {
+			mutant.home = i;
+			break;
+		}
+
+	mutant.enemy = ((long) rand() * totenemies) / RAND_MAX;
+	mutant.enemy = (elist[mutant.enemy] == MUTANTS) ? HUMAN : elist[mutant.enemy];
+	if (mutant.enemy == 0) mutant.enemy = HUMAN;
+	
+	for (j = 0; j < 6; j++) wmove[j] = 9999;
+
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+		if (precs[i].owns == NOPLANET) continue;
+
+		if (precs[i].owns == mutant.enemy && precs[i].homeplanet)
+			mutant.ehome = i;
+			
+		if (i == mutant.home) continue;
+		
+		d = calc_dsquare(i, mutant.home);
+
+		for (j = 0; j < 6; j++) {
+			if (d < wmove[j]) {
+				for (k = 5; k > j; k--) {
+					wmove[k] = wmove[k-1];
+					moves[k] = moves[k-1];
+				}
+				moves[j] = i; 						/* planet # to attack	*/
+				wmove[j] = d;						/* weight of move		*/
+				break;
+			}			
+		}
+	}
+	
+	for (i = 0; i < 6; i++) {
+		if (wmove[i] != 9999) send_ships( mutant.home, moves[i], 15, MUTANTS);
+	}				
+	return;
+}
+
+/* --- determine aggressive or conservative strategy --- */
+agress = mcount = 0;
+for (i = 0; i < PLANETROWS*PLANETCOLS; i++)
+	if (precs[i].owns == MUTANTS)
+		mcount++;
+		
+if (mcount > mutant.pcount)
+	agress = 1;
+if (mcount < mutant.pcount)
+	agress = -1;
+
+mutant.pcount = mcount; 	
+
+/* check to see if the enemy is DEAD */
+for (i = 0; i < totenemies; i++) {
+	if (elist[i] == mutant.enemy && dlist[i]) {
+		i = ((long) rand() * totenemies) / RAND_MAX;
+		arach.enemy = (elist[i] == MUTANTS) ? HUMAN : elist[i];
+	}
+}
+
+/* check to reassign mutant staging planet to closer to enemy home planet */
+if (mutant.stage >= 0) {
+	w = 9999;
+	j = -1;
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++)
+		if (precs[i].owns == MUTANTS && GETOWNED( precs[i], mutant.enemy )) {
+			d = calc_dsquare( i, mutant.ehome );
+			if (d < w) {
+				w = d;			/* save weight */
+				j = i;			/* save planet number */
+			}
+		}
+	
+	if (w < 9999)
+		mutant.stage = j;
+}
+
+/* --- early year game logic --- */
+if (curryear < 90) {
+	/* determine home planet moves */
+	if (precs[mutant.home].owns == MUTANTS) {
+		wmove[0] = wmove[1] = wmove[2] = wmove[3] = 0;	
+		for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+			if (precs[i].owns == NOPLANET) continue;
+			if (precs[i].owns == MUTANTS) continue;
+			if (i == mutant.home) continue;
+	
+			d = calc_dsquare( mutant.home, i );
+	
+			switch (agress) {
+			case -1:
+				w1 = (precs[i].owns != INDEPENDENT);
+				w = ((long) w1 * 60) / d;
+				break;
+			case 0:
+				w1 = ((precs[i].owns == mutant.enemy) || 
+					(precs[i].owns != MUTANTS && GETOWNED(precs[i], MUTANTS))) ? 2 : 1;
+				w = ((long) w1 * (100 + (curryear/2))) / d;
+				break;
+			default:
+			case 1:
+				w1 = (precs[i].owns == mutant.enemy) ? 2 : 1;
+				w = ((long) w1 * (120 + (curryear/2))) / d;
+				break;
+			}
+			
+			w += ((long) rand() * 10) / RAND_MAX;
+			
+			for (j = 0; j < 4; j++)
+				if (w > wmove[j]) {
+					for (k = 3; k > j; k--) {
+						wmove[k] = wmove[k-1];
+						moves[k] = moves[k-1];
+					}
+					moves[j] = i;
+					wmove[j] = w;
+					break;
+				}			
+		}
+		
+		/* --- home planet strategy --- */
+		k = precs[mutant.home].ships;
+	
+		switch(agress) {
+		case -1:	s = k / 4; break;
+		case 0:		s = ((k * 3) / 5); break;
+		default:
+		case 1:		s = ((k * 3) / 4); break;
+		}
+		for (i = 3; i >= 0; i--) {						/* go thru 4 best moves		*/
+		
+			j = s / (i + 1);							/* number of ships			*/
+	
+			k = moves[i];								/* the record number saved	*/
+			if (GETOWNED(precs[k], MUTANTS) ||
+				precs[k].homeplanet) {			/* if we've ever owned it	*/
+				if (j < (precs[k].ships * 4)/3)			/* make sure we can take it	*/
+					continue;							/* no, try next planet		*/
+			} else
+				if (j < (20 + (curryear/3)) &&
+				j < 150) continue;						/* unowned minimum			*/
+					
+			if (wmove[i] <= 0) continue;
+			if (j > 0) {
+				send_ships(mutant.home, k, j, MUTANTS);
+				s -= j;
+			}
+		}
+	
+	} else {
+		j = -1;
+		k = -1;
+		for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+			if (precs[i].owns != MUTANTS) continue;
+			if (precs[i].industry > k) {
+				j = i;
+				k = precs[i].industry;
+			}
+		}
+		if (j > 0)
+			mutant.home = j;
+	}
+	
+	/* --- other planets --- */
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+		if (precs[i].owns != MUTANTS || precs[i].ships == 0) continue;
+		if (i == mutant.home) continue;
+		
+		if (precs[i].ships > 10) {
+			send_ships( i, mutant.home, precs[i].ships - 6, MUTANTS);
+		}
+	}		  
+
+	return;	
+}
+
+/* --- late game strategy --- */
+if (precs[mutant.home].owns == MUTANTS) {
+	wmove[0] = wmove[1] = wmove[2] = wmove[3] = 0;	
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+		if (precs[i].owns == NOPLANET) continue;
+		if (precs[i].owns == MUTANTS) continue;
+		if (i == mutant.home) continue;
+
+		/* pick first enemy planet in list */
+		if (mutant.stage < 0 && precs[i].owns == mutant.enemy ) {
+			mutant.stage = i;
+		}
+		
+		if (i == mutant.ehome) {
+			if (mutant.stage >= 0 && precs[mutant.stage].owns != MUTANTS &&
+				(precs[mutant.home].ships > (2L * precs[mutant.ehome].ships)) ) {
+
+				s = (precs[mutant.home].ships * 4L) / 5;
+				if (s) send_ships( mutant.home, mutant.ehome, s, MUTANTS );
+			}
+			continue;
+		}
+
+		d = calc_distance( mutant.ehome, i );
+		d1 = calc_distance( mutant.home, i);
+		
+		if (d == 0 || d1 == 0) continue;
+		if (d == 1) d = 2;						/* the same for weight			*/
+		
+		switch (agress) {
+		case -1:
+			w1 = (precs[i].owns != MUTANTS && GETOWNED(precs[i], MUTANTS)) ? 1 : 0;
+			w = ((long) w1 * 100) / d1;
+			break;
+		case 0:
+			w1 = (precs[i].owns != MUTANTS && GETOWNED(precs[i], MUTANTS)) * 20 / d1;
+			w1 *= ((precs[i].industry == 0) ? 0 : 1);
+			w1 += (i == mutant.stage && precs[i].owns == MUTANTS) * 20;
+			w = ((precs[i].owns == mutant.enemy) * (20 / d)) + w1;
+			w += (i == mutant.stage && precs[i].owns == MUTANTS) * 1;
+			break;
+		case 1:
+			w = ((precs[i].owns == mutant.enemy) * (24 / d));
+			w += (i == mutant.stage && precs[i].owns == MUTANTS) * 10;
+			break;
+		}
+			
+		w += ((long) rand() * 10) / RAND_MAX;
+		
+		for (j = 0; j < 4; j++)
+			if (w > wmove[j]) {
+				for (k = 3; k > j; k--) {
+					wmove[k] = wmove[k-1];
+					moves[k] = moves[k-1];
+				}
+				moves[j] = i;
+				wmove[j] = w;
+				break;
+			}			
+	}
+	
+	/* --- home planet strategy --- */
+	k = precs[mutant.home].ships;
+
+	switch(agress) {
+	case -1:	s = k / 3; break;
+	case 0:		s = ((k * 1) / 2); break;
+	case 1:		s = ((k * 3) / 5); break;
+	}
+	
+	for (i = 3; i >= 0; i--) {						/* go thru 4 best moves		*/
+		j = s / (i + 1);							/* number of ships			*/
+
+		k = moves[i];								/* the record number saved	*/
+		if (GETOWNED(precs[k], MUTANTS) ||
+			precs[k].homeplanet) {			/* if we've ever owned it	*/
+			if (j < (precs[k].ships * 4L)/3)			/* make sure we can take it	*/
+				continue;							/* no, try next planet		*/
+		} else
+			if (j < (20 + (curryear/3)) && j < 120) 
+				continue;						/* unowned minimum & maximum	*/
+				
+		if (wmove[i] <= 0) continue;
+		if (j >= 0) {
+			send_ships(mutant.home, k, j, MUTANTS);
+			s -= j;
+		}
+	}
+
+} else {
+	j = -1;
+	k = 0;
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+		if (precs[i].owns != MUTANTS) continue;
+		if (precs[i].industry > k) {
+			j = i;
+			k = precs[i].industry;
+		}
+	}
+	if (j > 0)
+		mutant.home = j;
+}
+	
+/* --- other planets --- */
+for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+	if (precs[i].owns != MUTANTS || precs[i].ships == 0) continue;
+	if (i == mutant.home) continue;
+	
+	/* staging planet logic */
+	if (mutant.stage >= 0 && i == mutant.stage && precs[i].owns == MUTANTS) {
+		if (precs[mutant.ehome].ships < (2 * precs[i].ships)) {
+			s = precs[mutant.ehome].ships * 2;
+			if (s) send_ships( mutant.stage, mutant.ehome, s, MUTANTS );
+			continue;
+		}	
+		w = 9999;
+		for (j = 0; j < PLANETROWS*PLANETCOLS; j++) {
+			if (precs[j].owns != mutant.enemy) continue;
+			if (j == mutant.stage) continue; /* dont move to self */
+			if ( precs[mutant.stage].ships > (2 * precs[j].ships) ) {
+				d = calc_dsquare( mutant.stage, j );
+				if (d < w) {
+					w = d;		/* save weight */
+					k = j;		/* save planet number */
+				}
+			}
+		}
+		if (w < 9999) {
+			s = (precs[k].ships * 3) / 2;
+			if (s == 0) s = 15;
+			if (s > 0) send_ships( mutant.stage, k, s, MUTANTS);
+		}	
+		continue;
+	}
+	
+	d = d1 = 9999;
+	if (precs[mutant.home].owns == MUTANTS)
+		d = calc_dsquare( mutant.home, i );
+	if (mutant.stage >= 0 && precs[mutant.stage].owns == MUTANTS) 
+		d1 = calc_dsquare( mutant.stage, i);
+	
+	if (precs[i].ships > 10 + (curryear/20)) {
+		s = precs[i].ships - 6;
+		if (d1 < d) {
+			send_ships( i, mutant.stage, s, MUTANTS );
+		} else {
+			send_ships( i, mutant.home, s, MUTANTS );
+		}
+	}
+}		  
+	
+}
+
+void
+Move_Nukes()
+{
+short				moves[6];						/* startup 6 best moves	*/
+short				wmove[6];
+short				i, j, k;				
+short				x, y;
+short				d;								/* distance to planet */
+
+if (curryear == 0) {
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++)
+		if (precs[i].owns == NUKES) {
+			nuke.home = i;
+			break;
+		}
+	nuke.enemy = (long) rand() * totenemies / RAND_MAX;
+	nuke.enemy = (elist[nuke.enemy] == NUKES) ? HUMAN : elist[nuke.enemy];
+
+/* --- home planet year 0 strategy - grab some production --- */
+	for (j = 0; j < 6; j++) wmove[j] = 9999;
+
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+		if (precs[i].owns == NOPLANET) continue;
+		if (precs[i].owns == NUKES) {
+			nuke.stage = nuke.next = i;
+			continue;
+		}
+		if (precs[i].owns == nuke.enemy && precs[i].homeplanet)
+			nuke.ehome = i;
+		if (i == nuke.home) continue;
+		
+		d = calc_dsquare(i, nuke.home);
+
+		for (j = 0; j < 6; j++) {
+			if (d < wmove[j]) {
+				for (k = 5; k > j; k--) {
+					wmove[k] = wmove[k-1];
+					moves[k] = moves[k-1];
+				}
+				moves[j] = i; 						/* planet # to attack	*/
+				wmove[j] = d;						/* weight of move		*/
+				break;
+			}			
+		}
+	}
+	
+	for (i = 0; i < 6; i++) {
+		send_ships( nuke.home, moves[i], 15, NUKES);
+	}				
+	nuke.ndiv = 5;
+	return;
+}
+
+/* check to see if the enemy is DEAD */
+for (i = 0; i < totenemies; i++) {
+	if (elist[i] == nuke.enemy && dlist[i]) {
+		i = ((long) rand() * totenemies) / RAND_MAX;
+		nuke.enemy = (elist[i] == NUKES) ? HUMAN : elist[i];
+	}
+}
+
+
+if (precs[nuke.next].owns == NUKES) {					/* took next planet				*/
+	nuke.stage = nuke.next;									/* flag -compute next victim*/
+	nuke.bored = (nuke.next == nuke.enemy) ? 4 : 2;			/* only wait N turns		*/
+}
+
+if (precs[nuke.ehome].owns == NUKES) {					/* taken enemy home planet		*/
+	nuke.home = nuke.ehome;										/* move home base			*/
+	nuke.stage = nuke.next = nuke.home;								/* and staging etc.			*/
+	k = 0;												/* not found				*/
+	j = (long) (rand() * totenemies) / RAND_MAX;		/* random enemy				*/
+	nuke.enemy = (elist[j] == NUKES || elist[j] == nuke.enemy) ? HUMAN : elist[nuke.enemy];
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++)			/* is he around and home?	*/
+		if (precs[i].owns == nuke.enemy && precs[i].homeplanet) {
+			nuke.ehome = i;
+			nuke.ndiv = 4;
+			k = 1;										/* found					*/
+		}
+	if (k == 0) return;									/* if not found, wait 1 turn*/
+}
+
+if (nuke.stage == nuke.next) {								/* determine next planet		*/
+	if (nuke.ndiv > 0) {
+		x = ((precs[nuke.stage].col - precs[nuke.ehome].col) * (nuke.ndiv-1)) / nuke.ndiv;
+		x += precs[nuke.ehome].col;
+		y = ((precs[nuke.stage].row - precs[nuke.ehome].row) * (nuke.ndiv-1)) / nuke.ndiv;
+		y += precs[nuke.ehome].row;
+		nuke.ndiv--;
+	
+		k = 9999;	
+		for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+			if (precs[i].owns == NOPLANET) continue;
+			if (precs[i].owns == NUKES) continue;
+			d = ((precs[i].row - y) * (precs[i].row - y)) +  
+				((precs[i].col - x) * (precs[i].col - x));
+			if (d < k) {
+				k = (short) d;
+				nuke.next = i;
+			}
+		}
+	} else {
+		k = calc_dsquare(nuke.ehome, nuke.stage);
+		nuke.next = nuke.ehome;
+	}
+	
+	j = calc_time(nuke.next, nuke.stage);
+	nuke.wait = (j + 10) / 10;
+}
+
+if (precs[nuke.stage].owns != NUKES)						/* lose staging planet		*/
+	nuke.stage = nuke.home;									/* revert to home			*/
+	
+/* --- other years - send to staging planet	--- */
+for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+	if (precs[i].owns == NOPLANET) continue;
+	if (precs[i].owns == NUKES) {
+		if (i != nuke.stage) {								/* non-stage planet logic	*/
+			j = precs[i].ships;
+			if (i == nuke.home)
+				j -= 50 + (curryear/10);
+			else
+				j -= 10 + (curryear/20);	
+			
+			if (j > (10 + (((long) rand() * 25)/RAND_MAX))) {
+				send_ships( i, nuke.stage, j, NUKES);
+			}
+		} else {										/* stage planet logic		*/									
+			if (nuke.wait) {
+				nuke.wait--;
+				send_ships( nuke.stage, nuke.next, 1, NUKES );
+			} else {
+				if (precs[nuke.next].ships > ((6 * curryear)/10)) {
+					nuke.next = nuke.stage;						/* pick new next planet		*/
+					continue;
+				}
+				if (((precs[nuke.next].ships * 5)/3)< precs[nuke.stage].ships) {
+					send_ships( nuke.stage, nuke.next, precs[nuke.stage].ships, NUKES );
+				} else {
+					nuke.bored--;
+					if (nuke.bored < 0) {
+						wmove[0] = 9999;
+						for (j = 0; j < PLANETROWS*PLANETCOLS; j++)
+							if (precs[j].owns == nuke.enemy) {
+								if (k == nuke.stage) continue;
+								k = calc_dsquare(nuke.stage, j);
+								if (k < wmove[0]) {
+									wmove[0] = k;
+									moves[0] = j;
+								}
+							}
+						if (wmove[0] < 9999) {
+							nuke.bored = 1;
+							nuke.next = moves[0];
+							nuke.wait = (wmove[0] + 10) / 10;
+						}							
+					}
+				}
+			}
+		}
+	}
+}
+ 
+}
+
+void
+Move_Bozos()
+{
+short				moves[6];						/* startup 6 best moves	*/
+short				wmove[6];
+short				i, j, k;				
+short				w, d;							/* distance to planet */
+short				enemy;
+
+if (curryear == 0) {
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++)
+		if (precs[i].owns == BOZOS) {
+			bozo.home = i;
+			break;
+		}
+
+	for (j = 0; j < 5; j++) bozo.search[j] = -1;
+	bozo.next = -1;
+	bozo.stage = bozo.home;
+	bozo.wait = 9999;
+	
+/* --- home planet year 0 strategy - grab some production --- */
+	for (j = 0; j < 6; j++) wmove[j] = 9999;
+
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+		if (precs[i].owns == NOPLANET) continue;
+		if (i == bozo.home) continue;
+		
+		d = calc_dsquare(i, bozo.home);
+
+		for (j = 0; j < 6; j++) {
+			if (d < wmove[j]) {
+				for (k = 5; k > j; k--) {
+					wmove[k] = wmove[k-1];
+					moves[k] = moves[k-1];
+				}
+				moves[j] = i; 						/* planet # to attack	*/
+				wmove[j] = d;						/* weight of move		*/
+				break;
+			}			
+		}
+	}
+	
+	for (i = 0; i < 6; i++) {
+		send_ships( bozo.home, moves[i], 15, BOZOS);
+	}				
+	return;
+}
+
+/* --- check to see if we search out another planet --- */
+if (bozo.next != -1 && precs[bozo.next].owns == BOZOS) {
+	bozo.stage = bozo.next;
+	bozo.next = -1;
+	bozo.wait = 9999;
+}
+
+/* --- late game strategy --- */
+if (curryear > 180) {
+	d = 0;
+	enemy = -1;
+	for (i = 0; i < totenemies; i++) {
+		w = 0;
+		k = elist[i]; if (k == BOZOS) k = HUMAN;
+		for (j = 0; j < PLANETROWS*PLANETCOLS; j++) {
+			if (precs[j].owns == NOPLANET) continue;
+			if (GETOWNED(precs[j], BOZOS) &&
+				precs[j].owns == k)
+				w++;
+		}
+		if (w > d) {
+			enemy = k;
+			d = w;
+		}
+	}
+	if (d > 0) {
+		for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+			if (precs[i].owns == NOPLANET) continue;
+			if (precs[i].owns == enemy && precs[i].homeplanet &&
+				precs[bozo.stage].ships > (2 * precs[i].ships)) {
+        // bozos steal ships if bozo.stage not owned by Bozos
+				send_ships(bozo.stage, i, precs[bozo.stage].ships, BOZOS);
+				break;
+			}	
+		}
+	}
+	if (enemy == -1) enemy = INDEPENDENT;		
+} else
+	enemy = INDEPENDENT;
+
+if (bozo.wait == 9999 && bozo.next == -1) {
+	/* determine next planet to attack */
+
+	if (precs[bozo.stage].ships < 5) goto not_enough;
+	for (i = 0; i < 5; i++) bozo.search[i] = -1;
+	for (i = 0; i < 5; i++) wmove[i] = 9999;
+	for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+		if (precs[i].owns == NOPLANET) continue;
+		if (precs[i].owns == BOZOS) continue;
+		if (i == bozo.stage) continue;
+		
+		d = calc_dsquare ( bozo.stage, i );
+		
+		if (precs[i].owns != enemy)
+			d = d * 10;	
+		
+		for (j = 0; j < 5; j++) {
+			if (d < wmove[j]) {
+				for (k = 4; k > j; k--) {
+					wmove[k] = wmove[k-1];
+					moves[k] = moves[k-1];
+				}
+				moves[j] = i; 						/* planet # to attack	*/
+				wmove[j] = d;						/* weight of move		*/
+				break;
+			}			
+		}
+	}
+	
+	/* send a ship to the 5 next planets */
+	w = 0;
+	for (i = 0; i < 5; i++) {
+		bozo.search[i] = moves[i];
+		j = calc_time( bozo.stage, moves[i] );
+		if (j > w) w = j;
+		if (precs[bozo.stage].ships) 
+			send_ships( bozo.stage, moves[i], 1, BOZOS);
+	}
+	
+	bozo.wait = (w + 10)/10;
+}
+
+not_enough:
+
+/* --- home planet logic --- */
+if (bozo.stage != bozo.home) {				
+	if (precs[bozo.home].owns == BOZOS) {
+		k = precs[bozo.home].ships - (25 + (curryear/20));
+		if (k > 15)
+			send_ships( bozo.home, bozo.stage, k, BOZOS );
+	}
+} 
+
+/* --- staging planet logic --- */
+if (bozo.wait != 9999) bozo.wait--;
+if (bozo.wait <= 0) {
+	moves[0] = -1;
+	w = 9999;
+	k = 0;					/* move to out own planet */
+	j = 0;					/* try to find largest force we can take */
+	for (i = 0; i < 5; i++) {
+		if (precs[bozo.search[i]].owns != BOZOS) {
+			if ((precs[bozo.search[i]].ships > j) &&
+				(precs[bozo.search[i]].ships < ((2 * precs[bozo.stage].ships)/3))) {
+				moves[0] = bozo.search[i];
+				j = precs[bozo.search[i]].ships;
+				k = 1;
+			}
+		}
+	}
+	
+	if (k == 0) {
+		for (i = 0; i < 5; i++) {
+			if (precs[bozo.search[i]].owns != BOZOS &&
+				precs[bozo.search[i]].ships < w) {
+				w = precs[bozo.search[i]].ships;	/* smallest enemy */
+				moves[0] = bozo.search[i];
+				k = 1;				/* at least one non-bozo */
+			}
+		}
+	}
+	
+	if (k == 0) {				/* we own it all */
+		if (precs[bozo.stage].ships) {
+			bozo.next = moves[0];	/* go to nearest planet */
+			send_ships( bozo.stage, bozo.next, precs[bozo.stage].ships, BOZOS);
+		}
+	} else {
+		if (precs[moves[0]].owns != BOZOS &&
+			precs[bozo.stage].ships > ((3L * precs[moves[0]].ships) / 2)) {
+			bozo.next = moves[0];
+			if (precs[bozo.stage].ships)
+				send_ships( bozo.stage, bozo.next, precs[bozo.stage].ships, BOZOS);
+		}
+	}
+
+	/* ebery 5th year check to nuke home planet */			
+	if ((curryear % 50) == 0) {
+		for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+			if (precs[i].owns == NOPLANET) continue;
+			if (precs[i].homeplanet && precs[i].owns != BOZOS &&
+				(precs[bozo.stage].ships > (2L * precs[i].ships)))
+				send_ships( bozo.stage, i, precs[bozo.stage].ships, BOZOS);
+			}
+	}
+}
+
+/* --- other planets logic --- */
+for (i = 0; i < PLANETROWS*PLANETCOLS; i++) {
+	if (precs[i].owns != BOZOS) continue;
+	if (i == bozo.stage || i == bozo.home) continue;
+	
+	if (precs[i].ships > 10)
+		send_ships( i, bozo.stage, precs[i].ships, BOZOS);
+}
+
+
+/* --- debug --- */
+#ifdef XXX
+for (i = 0; i < tottrecs; i++) 
+	printf("%3d of %3d: Send %d ships [type=%d] from %d,%d to %d,%d [time=%d]\n",
+		i, tottrecs, trecs[i].ships, trecs[i].fromowns, trecs[i].fromcol, trecs[i].fromrow,
+		trecs[i].tocol, trecs[i].torow, trecs[i].timeleft);
+#endif
+}
+
+void
+Save_Bits(Rect *r)
+{
+long        offRowBytes, sizeOfOff;
+short       theDepth;
+GDHandle    theMaxDevice, oldDevice;
+GrafPtr		sp;
+Ptr			p;
+
+GetPort(&sp);
+savescnrect = (*r);
+
+theMaxDevice = GetMaxDevice(&savescnrect);/*get the maxDevice*/
+
+oldDevice = GetGDevice();		/*save theGDevice so we can restore it later*/
+SetGDevice(theMaxDevice);   	/*Set to the maxdevice						*/
+
+OpenCPort(&saveCGrafPort);   /*open a new color port ‹ this calls InitCPort*/
+theDepth = (**saveCGrafPort.portPixMap).pixelSize;
+offRowBytes = (((theDepth * (savescnrect.right - savescnrect.left)) + 15) >> 4) << 1;
+sizeOfOff = (long) (savescnrect.bottom - savescnrect.top) * offRowBytes;
+OffsetRect(&savescnrect,-savescnrect.left,-savescnrect.top);
+
+(**saveCGrafPort.portPixMap).rowBytes = offRowBytes + 0x8000;
+(**saveCGrafPort.portPixMap).bounds = savescnrect;
+p = NewPtr(sizeOfOff);
+(**saveCGrafPort.portPixMap).baseAddr = p;
+
+
+if(p == 0L)goto byebye;
+
+SetPort((GrafPtr)&saveCGrafPort);
+savescnrect = (*r);
+CopyBits(&qd.screenBits,(BitMap *)(*saveCGrafPort.portPixMap),
+			&savescnrect,&(**saveCGrafPort.portPixMap).bounds,srcCopy,0L);
+byebye:
+SetGDevice(oldDevice);   		/*Set to the maxdevice						*/
+SetPort(sp);
+}
+
+void
+Restore_Bits()
+{
+GrafPtr	sp;
+
+GetPort(&sp);
+if((**saveCGrafPort.portPixMap).baseAddr != 0L)
+	{
+	CopyBits((BitMap *)(*saveCGrafPort.portPixMap),&qd.screenBits,
+			&(**saveCGrafPort.portPixMap).bounds,&savescnrect,srcCopy,0L);
+	DisposePtr((**saveCGrafPort.portPixMap).baseAddr);
+	(**saveCGrafPort.portPixMap).baseAddr = 0L;
+	CloseCPort(&saveCGrafPort);
+	}
+SetPort(sp);
+}
+
+short
+Check_For_Dead(short enemy)
+{
+short	i;
+
+for(i=0;i<tottrecs;i++)
+	{
+	if(trecs[i].fromowns == enemy)return(0);
+	}
+for(i=0;i<totplanets;i++)
+	{
+	if(precs[i].owns == NOPLANET)continue;
+	if(precs[i].owns == INDEPENDENT)continue;
+	if(precs[i].owns == enemy)return(0);
+	}
+return(1);	/* They be dead */
+}
+
+void
+Show_Dead_Alien(short enemy)
+{
+unsigned char 	title[6] = { 5, 1, 0, 0, 0 };
+
+if(GetIconSuite(&deadHandle[enemy], enemy+100, svAllAvailableData ) == noErr)
+	{
+	// Create and append a new menu to the menu bar
+	
+	deadMenu[enemy] = NewMenu(100+enemy, "\ptmptitle");
+	// Get the new title stinge
+	
+	BlockMove( &deadHandle[enemy], &title[2], sizeof (Handle) );
+
+	// Munger the menu handle to replace the title
+	
+	Munger( (Handle) deadMenu[enemy],
+			  14,
+			  NULL, 
+			  (**deadMenu[enemy]).menuData[0] + 1,
+			  title,
+			  6 );
+			  
+	InsertMenu (deadMenu[enemy],0);
+	DrawMenuBar();
+	}	
+}
+
+void
+Clear_Dead_Aliens()
+{
+short	i;
+
+for(i=GUBRU;i<= BOZOS;i++)
+	{
+	if(deadMenu[i] != nil)
+		{
+		DeleteMenu(100+i);
+		DisposeMenu(deadMenu[i]);
+		deadMenu[i] = nil;
+		}
+	}
+DrawMenuBar();
+
+}
+
+short
+Do_Battle()
+{
+short	tick,i,nextempty,aliensinflight,aliensathome,humansinflight,humansathome,deadtype;
+long	crap;
+WindowPtr	prtwind,sp;
+double_t		n;
+Rect		r,iconrect;
+Point		woff;
+Str255		infostr;
+
+gamesaved = 0;
+
+/* Process all continuous feeds */
+
+for(i=0;i<totplanets;i++)
+	{
+	if(feedtolist[i] != (-1))
+		{
+		fmplanet = i;
+		toplanet = feedtolist[i];
+		if(precs[fmplanet].owns == HUMAN)
+			{
+			if(precs[fmplanet].ships > 0)
+				{
+				Calc_Time();
+				Launch_Ships(precs[fmplanet].ships,true,true);
+				}
+			}
+		else
+			{
+			feedtolist[i] = (-1);
+			}
+		}
+	}
+	
+/* Get the alien moves */
+
+for(i=0;i<totenemies;i++)
+	{
+	currinput = elist[i];
+	Show_Input();
+	if(!fastbattles)Delay(6L,&crap);
+	
+	switch(elist[i])
+		{
+		case GUBRU:		{Move_Gubrus();break;}
+		case CZIN:		{Move_Czins();break;}
+		case BLOBS:		{Move_Blobs();break;}
+		case BOTS:		{Move_Bots();break;}
+		case ARACHS:	{Move_Arachs();break;}
+		case MUTANTS:	{Move_Mutants();break;}
+		case NUKES:		{Move_Nukes();break;}
+		case BOZOS:		{Move_Bozos();break;}
+		}
+	}
+
+	currinput = 0;
+	Show_Input();
+	if(!fastbattles)Delay(6L,&crap);
+	
+/* Process the 10 ticks per second of a year */
+	
+for(tick=0;tick<10;tick++)
+	{
+	
+	/* Bump and show the year */
+	
+	curryear++;
+	Show_Year();
+	
+	/* Decrement all transport record times */
+	
+	for(i=0;i<tottrecs;i++)
+		{
+		trecs[i].timeleft--;
+		if(trecs[i].timeleft <= 0)
+			{
+			/* Do the attack or fortify here */
+			Do_Attack_Fortify(trecs[i].fromrow,trecs[i].fromcol,
+							  trecs[i].fromowns,
+							  trecs[i].torow,trecs[i].tocol,trecs[i].ships);
+			}
+		}
+		
+	/* Eliminate used transport records - squeeze list */
+
+	nextempty = 0;
+	while(nextempty != tottrecs)
+		{
+		/* Find next empty slot */
+		for(;nextempty<tottrecs;nextempty++)
+			{
+			if(trecs[nextempty].timeleft <= 0)break;
+			}
+		if(tottrecs != nextempty)
+			{
+			trecs[nextempty] = trecs[tottrecs-1];
+			trecs[tottrecs-1].timeleft = 0;
+			tottrecs--;
+			}
+		}
+		
+	/* see if we have won yet (or lost) */
+
+	for(aliensinflight = 0,i=0;i<tottrecs;i++)
+		{
+		if(trecs[i].fromowns != HUMAN)
+			{
+			aliensinflight=1;
+			break;
+			}
+		}
+	for(aliensathome=0,i=0;i<totplanets;i++)
+		{
+		if(precs[i].owns == NOPLANET)continue;
+		if(precs[i].owns == INDEPENDENT)continue;
+		if(precs[i].owns != HUMAN)
+			{
+			aliensathome=1;
+			break;
+			}
+		}
+	for(humansinflight=0,i=0;i<tottrecs;i++)
+		{
+		if(trecs[i].fromowns == HUMAN)
+			{
+			humansinflight=1;
+			break;
+			}
+		}
+	for(humansathome=0,i=0;i<totplanets;i++)
+		{
+		if(precs[i].owns == NOPLANET)continue;
+		if(precs[i].owns == HUMAN)
+			{
+			humansathome=1;
+			break;
+			}
+		}
+	for(i=0;i<totenemies;i++)
+		{
+		if(dlist[i] == 0)
+			{
+			if((dlist[i] = Check_For_Dead(elist[i])) != 0)
+				{
+				/* Newly dead alien */
+				
+				GetPort(&sp);
+				pStrCopy("\pThe",infostr);
+				switch(elist[i])
+					{
+					case GUBRU:		{pStrCat("\p Gubrus",infostr);break;}
+					case CZIN:		{pStrCat("\p Czins",infostr);break;}
+					case BLOBS:		{pStrCat("\p Blobs",infostr);break;}
+					case BOTS:		{pStrCat("\p Bots",infostr);break;}
+					case ARACHS:	{pStrCat("\p Arachs",infostr);break;}
+					case MUTANTS:	{pStrCat("\p Mutants",infostr);break;}
+					case NUKES:		{pStrCat("\p Nukes",infostr);break;}
+					case BOZOS:		{pStrCat("\p Bozos",infostr);break;}
+					}
+				/* Generate an appropriate dead msg */
+				n = TickCount();			/* Seed the random number generator */
+				n = randomx(&n);
+				deadtype = (short)((long)n % 6L);
+				switch(deadtype)
+					{
+					default:
+					case 0:	{pStrCat("\p Croak!",infostr);break;}
+					case 1:	{pStrCat("\p have been wiped out!",infostr);break;}
+					case 2:	{pStrCat("\p bite the dust!",infostr);break;}
+					case 3:	{pStrCat("\p have been eliminated!",infostr);break;}
+					case 4:	{pStrCat("\p choke and die!",infostr);break;}
+					case 5:	{pStrCat("\p are dead meat!",infostr);break;}
+					}
+				woff.h = woff.v = 0;
+				SetPort(gamewind);
+				LocalToGlobal(&woff);
+				r.top = ((gamerect.bottom - gamerect.top) - 52)/2;
+				r.bottom = r.top + 52;
+				r.left = ((gamerect.right - gamerect.left) - 280)/2;
+				r.right = r.left + 280;
+				/* Save the area behind the window before display */
+				
+				InsetRect(&r,-10,-10);		/* Enlarge to account for dialog edges 	*/	
+				Save_Bits(&r);				/* Save whats underneath the dialog 	*/
+				InsetRect(&r,10,10);
+				
+				/*SysBeep(1);*/
+				
+				prtwind = NewWindow( 0L, &r, "\p", 1, 1, (WindowPtr)-1L, 0, 0L );
+				SetPort( prtwind );
+				TextFont(0);
+				TextSize(12);
+				SetRect(&iconrect,10,10,42,42);
+				PlotCIcon(&iconrect,planetIcons[elist[i]]);
+				MoveTo(52,30);
+				DrawString(infostr);
+				
+				/* Start cheers sound here */
+				StartASound(513);
+									
+				Delay(60L,&crap);
+				while(iconrect.right > iconrect.left)
+					{
+					EraseRect(&iconrect);
+					InsetRect(&iconrect,1,1);
+					PlotCIcon(&iconrect,planetIcons[elist[i]]);
+					Delay(4L,&crap);
+					}					
+				Delay(60L,&crap);
+				
+				/* Wait for cheers to finish */
+				EndASound();
+				
+				DisposeWindow(prtwind);
+				Restore_Bits();
+				SetPort(sp);
+				Show_Dead_Alien(elist[i]);
+				}
+			}
+		}
+	if((aliensathome==0) && (aliensinflight==0))wehavewon=1;
+	if((humansathome==0) && (humansinflight==0))wehavelost=1;	
+	if(wehavewon)
+		{
+		/* Check high scores and add to them if a good one */
+		Scores(CHECKSCORE);
+		return(1);
+		}
+	if(wehavelost)
+		{
+		/* Mourn our death here */
+		ParamText("\pYou Lost, Turkey!","\p","\p","\p");	/* Replace with better win notice */
+		MyStopAlert(STOPALRT,0L);
+		return(1);
+		}
+		
+	/* Delay just a bit */
+	if(!fastbattles)Delay(6L,&crap);
+	}
+	
+/* Bump all planet ships by their industry level */
+
+for(i=0;i<totplanets;i++)
+	{
+	if(precs[i].owns != NOPLANET)
+		precs[i].ships += precs[i].industry;
+	}
+		
+currinput = HUMAN;
+De_Select();
+New_Select(fmplanet,false);
+Show_From_Data();
+Show_Input();
+BeginUpdate(gamewind);
+EndUpdate(gamewind);
+return(0);
+}
+
+void
+Do_Attack_Fortify(short fr,short fc,short fown,short tr,short tc,short ships)
+/* fr = From row				*/
+/* fc = From col				*/
+/* fown = Who owns the ships	*/
+/* tr = To row 					*/
+/* tc = To col					*/
+/* ships = Arriving ship cnt	*/
+{
+short	fp,tp;	/* From planet-To Planet*/
+
+fp = (fr* PLANETCOLS) + fc;
+tp = (tr* PLANETCOLS) + tc;
+
+if(precs[tp].owns == fown)
+	{
+	/* Its a Fortify 	*/
+	De_Select();
+	New_Select(tp,false);
+	Do_Fortify(tp,tr,tc,ships,fown);
+	}
+else
+	{
+	/* Its an Attack	*/
+	De_Select();
+	New_Select(tp,false);
+	Do_Attack(fp,tp,ships,fown);
+	}
+}
+
+void
+Do_Attack(short /*fp*/,short tp,short ships,short fown)
+{
+Str255	infostr;
+Rect	r,gr,ibox,fcntrect,tcntrect;
+WindowPtr	sp;
+long		crap;
+double_t		n;
+Point		tip;
+short		surprise,i,hit;
+Point		woff;
+short		shipstofire,showtoships,tippos;
+RgnHandle	brgn,prgn;
+short		humanattack = 0;
+
+GetPort(&sp);
+
+/*	Calc the window position */
+
+woff.h = woff.v = 0;
+SetPort(gamewind);
+LocalToGlobal(&woff);
+
+
+tip.v = (((precs[tp].row * PLANETLENGTH) + 1) & 0xFFF0) + 8;
+tip.h = (((precs[tp].col * PLANETWIDTH)  + 1) & 0xFFF0) + 8;
+
+r.top = tip.v - 8;
+r.bottom = r.top + 110;
+tippos = 0;
+if(r.bottom > gamerect.bottom)
+	{
+	r.bottom = tip.v + 8;
+	r.top = r.bottom - 110;
+	tippos |= 1;
+	}
+if(precs[tp].col > (PLANETCOLS/2))
+	{
+	r.right = ((precs[tp].col + 1) * PLANETWIDTH);
+	r.left = (r.right - 200); 
+	}
+else
+	{
+	r.left = (precs[tp].col * PLANETWIDTH);
+	r.right = (r.left + 200);
+	tippos |= 2;
+	}
+
+tip.h++;
+tip.v++;
+
+gr = r;
+OffsetRect(&gr,woff.h,woff.v);
+InsetRect(&gr,-2,-2);
+Save_Bits(&gr);	
+InsetRect(&gr,2,2);
+
+SetPort(gamewind);
+PenNormal();
+
+switch(tippos)
+	{
+	/* hangs down and to the left */
+	case 0:	
+		{
+		brgn = NewRgn();
+		OpenRgn();
+		r.top += 24;
+		FrameRoundRect(&r,12,12);
+		CloseRgn(brgn);
+		prgn = NewRgn();
+		OpenRgn();
+		MoveTo(r.right-16,r.top);
+		LineTo(tip.h,tip.v);
+		LineTo(r.right-24,r.top);
+		LineTo(r.right-16,r.top);
+		CloseRgn(prgn);
+		break;
+		}
+	/* hangs up and to the left */
+	case 1:
+		{
+		brgn = NewRgn();
+		OpenRgn();
+		r.bottom -= 24;
+		FrameRoundRect(&r,12,12);
+		CloseRgn(brgn);
+		prgn = NewRgn();
+		OpenRgn();
+		MoveTo(r.right-16,r.bottom);
+		LineTo(tip.h,tip.v);
+		LineTo(r.right-24,r.bottom);
+		LineTo(r.right-16,r.bottom);
+		CloseRgn(prgn);
+		break;
+		}
+	/* hangs down and to the right */
+	case 2:	
+		{
+		brgn = NewRgn();
+		OpenRgn();
+		r.top += 24;
+		FrameRoundRect(&r,12,12);
+		CloseRgn(brgn);
+		prgn = NewRgn();
+		OpenRgn();
+		MoveTo(r.left+16,r.top);
+		LineTo(tip.h,tip.v);
+		LineTo(r.left+24,r.top);
+		LineTo(r.left+16,r.top);
+		CloseRgn(prgn);
+		break;
+		}
+	/* hangs up and to the right */
+	case 3:	
+		{
+		brgn = NewRgn();
+		OpenRgn();
+		r.bottom -= 24;
+		FrameRoundRect(&r,12,12);
+		CloseRgn(brgn);
+		prgn = NewRgn();
+		OpenRgn();
+		MoveTo(r.left+16,r.bottom);
+		LineTo(tip.h,tip.v);
+		LineTo(r.left+24,r.bottom);
+		LineTo(r.left+16,r.bottom);
+		CloseRgn(prgn);
+		break;
+		}
+	}
+
+UnionRgn(brgn,prgn,brgn);
+DisposeRgn(prgn);
+
+EraseRgn(brgn);
+FrameRgn(brgn);
+
+OffsetRgn(brgn,-1,-1);
+EraseRgn(brgn);
+FrameRgn(brgn);
+
+DisposeRgn(brgn);
+
+
+/* Set up the defender-attacker stuff */
+if((fown==HUMAN)&&(ships>1))
+	humanattack = 1;
+	
+showtoships = 0;
+if((fown == HUMAN) || 
+   (precs[tp].homeplanet) ||
+   ((precs[tp].lastvisit && (curryear - precs[tp].lastvisit) < 11)) ||
+   (precs[tp].humanpings >= 3) ||
+   (GETOWNED(precs[tp],HUMAN))) showtoships = 1;
+
+TextFont(geneva);
+TextSize(9);
+SetRect( &ibox,15,15,47,47);
+OffsetRect(&ibox,r.left,r.top);
+PlotCIcon(&ibox,planetIcons[fown]);
+SetRect( &ibox,7,2,65,15);
+OffsetRect(&ibox,r.left,r.top);
+pStrCopy("\pAttacker",infostr);		
+TextBox(&infostr[1], infostr[0], &ibox, teJustLeft);
+SetRect(&fcntrect,52,25,92,40);
+OffsetRect(&fcntrect,r.left,r.top);
+TextSize(10);
+NumToString((long)ships,infostr);
+TextBox(&infostr[1], infostr[0], &fcntrect, teJustCenter);
+
+TextFont(geneva);
+TextSize(9);
+SetRect( &ibox,153,15,185,47);
+OffsetRect(&ibox,r.left,r.top);
+PlotCIcon(&ibox,planetIcons[precs[tp].owns]);
+SetRect( &ibox,103,2,193,15);
+OffsetRect(&ibox,r.left,r.top);
+pStrCopy("\pDefender",infostr);		
+TextBox(&infostr[1], infostr[0], &ibox, teJustRight);
+SetRect(&tcntrect,107,25,147,40);
+OffsetRect(&tcntrect,r.left,r.top);
+TextSize(10);
+if(showtoships)
+	NumToString((long)precs[tp].ships,infostr);
+else
+	pStrCopy("\p??",infostr);
+TextBox(&infostr[1], infostr[0], &tcntrect, teJustCenter);
+
+/*	Generate the arrival info string */
+
+NumToString((long)ships,infostr);
+switch(fown)
+	{
+	case HUMAN:		{pStrCat("\p Human",infostr);break;}
+	case GUBRU:		{pStrCat("\p Gubru",infostr);break;}
+	case CZIN:		{pStrCat("\p Czin",infostr);break;}
+	case BLOBS:		{pStrCat("\p Blob",infostr);break;}
+	case BOTS:		{pStrCat("\p Bot",infostr);break;}
+	case ARACHS:	{pStrCat("\p Arach",infostr);break;}
+	case MUTANTS:	{pStrCat("\p Mutant",infostr);break;}
+	case NUKES:		{pStrCat("\p Nuke",infostr);break;}
+	case BOZOS:		{pStrCat("\p Bozo",infostr);break;}
+	}
+n = TickCount();			/* Seed the random number generator */
+n = randomx(&n);
+surprise = (short)((long)n % 6L);
+if(surprise == 0)			/* 1 in n chance */
+	{
+	if(ships > 1)
+		pStrCat("\p Ship Surprise Attack",infostr);
+	else
+		pStrCat("\p Ship Surprise Attack",infostr);
+	}
+else
+	{
+	if(ships > 1)
+		pStrCat("\p Ships Attack",infostr);
+	else
+		pStrCat("\p Ship Attacks",infostr);
+	}
+TextFont(0);
+TextSize(12);
+SetRect( &ibox,10,55,190,80);		/* left top right bot */
+OffsetRect(&ibox,r.left,r.top);
+TextBox(&infostr[1], infostr[0], &ibox, teJustCenter);
+
+if(precs[tp].owns == HUMAN && precs[tp].homeplanet)
+	{
+	// Play I'm hit
+	StartASound(kHumanHomePlanetHit);
+	}
+if(fastbattles)
+	Delay(30L,&crap);
+else
+	Delay(60L,&crap);
+	
+if(precs[tp].owns == HUMAN && precs[tp].homeplanet)
+	{
+	EndASound();
+	}
+
+/* Execute the battle here */
+
+TextFont(geneva);
+TextSize(10);
+if(precs[tp].ships)
+	{
+	if(surprise == 0)			/* 1 in n chance */
+		{
+		while(ships && precs[tp].ships)
+			{
+			/* Attackers shoot first */
+			shipstofire = (short) (ships * (0.70 + (0.3 * ((float) rand() / RAND_MAX))));
+			if (shipstofire < 1) shipstofire = 1;
+			for(i=0;i<shipstofire;i++)
+				{
+				n = randomx(&n);
+				hit = (short)((long)n % 2L);
+				if(hit)
+					{
+					precs[tp].ships--;
+					if(showtoships)
+						NumToString((long)precs[tp].ships,infostr);
+					else
+						pStrCopy("\p??",infostr);
+					TextBox(&infostr[1], infostr[0], &tcntrect, teJustCenter);
+					if(precs[tp].ships == 0)goto attackerswin;
+					if(!fastbattles)Delay(4L,&crap);
+					}
+				}
+			/* Defenders shoot second */
+			shipstofire = (short) (precs[tp].ships * (0.70 + (0.3 * ((float) rand() / RAND_MAX))));
+			if (shipstofire < 1) shipstofire = 1;
+			for(i=0;i<shipstofire;i++)
+				{
+				n = randomx(&n);
+				hit = (short)((long)n % 2L);
+				if(hit)
+					{
+					ships--;
+					NumToString((long)ships,infostr);
+					TextBox(&infostr[1], infostr[0], &fcntrect, teJustCenter);
+					if(ships == 0)goto defenderswin;
+					if(!fastbattles)Delay(4L,&crap);
+					}
+				}
+			}
+		}
+	else
+		{
+		while(ships && precs[tp].ships)
+			{
+			/* Defenders shoot first */
+		/*	shipstofire = (short) (ships * (0.7 + (0.3 * rand()) / RAND_MAX));*/
+			shipstofire = (short) (precs[tp].ships * (0.70 + (0.3 * ((float) rand() / RAND_MAX))));
+			if (shipstofire < 1) shipstofire = 1;
+			for(i=0;i<shipstofire;i++)
+				{
+				n = randomx(&n);
+				hit = (short)((long)n % 2L);
+				if(hit)
+					{
+					ships--;
+					NumToString((long)ships,infostr);
+					TextBox(&infostr[1], infostr[0], &fcntrect, teJustCenter);
+					if(ships == 0)goto defenderswin;
+					if(!fastbattles)Delay(4L,&crap);
+					}
+				}
+			/* Attackers shoot second */
+			shipstofire = (short) (ships * (0.70 + (0.3 * ((float) rand() / RAND_MAX))));
+			if (shipstofire < 1) shipstofire = 1;
+			for(i=0;i<shipstofire;i++)
+				{
+				n = randomx(&n);
+				hit = (short)((long)n % 2L);
+				if(hit)
+					{
+					precs[tp].ships--;
+					if(showtoships)
+						NumToString((long)precs[tp].ships,infostr);
+					else
+						pStrCopy("\p??",infostr);
+					TextBox(&infostr[1], infostr[0], &tcntrect, teJustCenter);
+					if(precs[tp].ships == 0)goto attackerswin;
+					if(!fastbattles)Delay(4L,&crap);
+					}
+				}
+			}
+		}
+attackerswin:
+	pStrCopy("\pThe Attackers are Victorious",infostr);
+	precs[tp].owns = fown;
+	precs[tp].ships = ships;
+	if (fown == HUMAN)
+		{
+		if(precs[tp].homeplanet)
+			{
+			// Humans just captured a home planet
+			StartASound(kHumanCapturesHomePlanet);
+			}
+		else
+			{
+			// Humans just captured any other planet
+			StartASound(kHumansCaptureAPlanet);
+			} 
+		precs[tp].lastvisit = curryear;
+		precs[tp].humanpings = 3;
+		}
+	else
+		{
+		if((fown == NUKES)&&(precs[tp].homeplanet))
+			{
+			// Nukes just captured a home planet
+			StartASound(kNukersTakeAHomePlanet);
+			}
+		else if ((fown == BOZOS)&&(precs[tp].homeplanet))
+			{
+			StartASound(kBozosTakeAHomePlanet);
+			}
+		feedtolist[tp] = (-1);
+		}
+	SETOWNED(precs[tp],fown);
+	New_Select(tp,false);
+	goto attackdone;
+defenderswin:
+	pStrCopy("\pThe Defenders Held",infostr);
+	if (fown == HUMAN)
+		{
+		if (humanattack)
+			{
+			StartASound(kBummer);
+			}
+		precs[tp].lastvisit = curryear;
+		if(precs[tp].humanpings < 3)precs[tp].humanpings++;
+		}
+	goto attackdone;
+	}/* end if defender had some ships */
+else
+	{
+	pStrCopy("\pThey give up without a fight",infostr);
+	precs[tp].owns = fown;
+	precs[tp].ships = ships;
+	if (fown == HUMAN)
+		{ 
+		precs[tp].lastvisit = curryear;
+		precs[tp].humanpings = 3;
+		}
+	else
+		{
+		feedtolist[tp] = (-1);
+		}
+	SETOWNED(precs[tp],fown);
+	New_Select(tp,false);
+	}
+	
+attackdone:
+TextFont(0);
+TextSize(12);
+SetRect( &ibox,3,55,198,80);
+OffsetRect(&ibox,r.left,r.top);
+TextBox(&infostr[1], infostr[0], &ibox, teJustCenter);
+
+if(fastbattles)
+	Delay(60L,&crap);
+else
+	Delay(120L,&crap);
+
+EndASound();
+Restore_Bits();
+SetPort(sp);
+}
+
+void
+Do_Fortify(short tp,short tr,short tc,short ships,short /*fown*/)
+{
+Str255	infostr;
+Rect	r,gr,ibox;
+Point		woff,tip;
+long		crap;
+short		tippos;
+RgnHandle	brgn,prgn;
+GrafPtr		sp;
+
+GetPort(&sp);
+
+/*	Calc the window position */
+
+woff.h = woff.v = 0;
+SetPort(gamewind);
+LocalToGlobal(&woff);
+
+tip.v = (((tr * PLANETLENGTH) + 1) & 0xFFF0) + 8;
+tip.h = (((tc * PLANETWIDTH)  + 1) & 0xFFF0) + 8;
+
+r.top = tip.v -8;
+r.bottom = r.top + 48;
+tippos = 0;
+if(r.bottom > gamerect.bottom)
+	{
+	r.bottom = tip.v + 8;
+	r.top = r.bottom - 48;
+	tippos |= 1;
+	}
+if(tc > (PLANETCOLS/2))
+	{
+	r.right = ((tc + 1) * PLANETWIDTH);
+	r.left = (r.right - 150); 
+	}
+else
+	{
+	r.left = (tc * PLANETWIDTH);
+	r.right = (r.left + 150);
+	tippos |= 2;
+	}
+
+tip.h++;
+tip.v++;
+
+gr = r;
+OffsetRect(&gr,woff.h,woff.v);
+InsetRect(&gr,-2,-2);
+Save_Bits(&gr);	
+InsetRect(&gr,2,2);
+
+SetPort(gamewind);
+PenNormal();
+
+
+switch(tippos)
+	{
+	/* hangs down and to the left */
+	case 0:	
+		{
+		brgn = NewRgn();
+		OpenRgn();
+		r.top += 24;
+		FrameRoundRect(&r,12,12);
+		CloseRgn(brgn);
+		prgn = NewRgn();
+		OpenRgn();
+		MoveTo(r.right-16,r.top);
+		LineTo(tip.h,tip.v);
+		LineTo(r.right-24,r.top);
+		LineTo(r.right-16,r.top);
+		CloseRgn(prgn);
+		break;
+		}
+	/* hangs up and to the left */
+	case 1:
+		{
+		brgn = NewRgn();
+		OpenRgn();
+		r.bottom -= 24;
+		FrameRoundRect(&r,12,12);
+		CloseRgn(brgn);
+		prgn = NewRgn();
+		OpenRgn();
+		MoveTo(r.right-16,r.bottom);
+		LineTo(tip.h,tip.v);
+		LineTo(r.right-24,r.bottom);
+		LineTo(r.right-16,r.bottom);
+		CloseRgn(prgn);
+		break;
+		}
+	/* hangs down and to the right */
+	case 2:	
+		{
+		brgn = NewRgn();
+		OpenRgn();
+		r.top += 24;
+		FrameRoundRect(&r,12,12);
+		CloseRgn(brgn);
+		prgn = NewRgn();
+		OpenRgn();
+		MoveTo(r.left+16,r.top);
+		LineTo(tip.h,tip.v);
+		LineTo(r.left+24,r.top);
+		LineTo(r.left+16,r.top);
+		CloseRgn(prgn);
+		break;
+		}
+	/* hangs up and to the right */
+	case 3:	
+		{
+		brgn = NewRgn();
+		OpenRgn();
+		r.bottom -= 24;
+		FrameRoundRect(&r,12,12);
+		CloseRgn(brgn);
+		prgn = NewRgn();
+		OpenRgn();
+		MoveTo(r.left+16,r.bottom);
+		LineTo(tip.h,tip.v);
+		LineTo(r.left+24,r.bottom);
+		LineTo(r.left+16,r.bottom);
+		CloseRgn(prgn);
+		break;
+		}
+	}
+
+UnionRgn(brgn,prgn,brgn);
+DisposeRgn(prgn);
+	
+/*	Generate the info string */
+
+NumToString((long)ships,infostr);
+/*
+switch(fown)
+	{
+	case HUMAN:		{pStrCat("\p Human",infostr);break;}
+	case GUBRU:		{pStrCat("\p Gubru",infostr);break;}
+	case CZIN:		{pStrCat("\p Czin",infostr);break;}
+	case BLOBS:		{pStrCat("\p Blob",infostr);break;}
+	case BOTS:		{pStrCat("\p Bot",infostr);break;}
+	case ARACHS:	{pStrCat("\p Arach",infostr);break;}
+	case MUTANTS:	{pStrCat("\p Mutant",infostr);break;}
+	case NUKES:		{pStrCat("\p Nuke",infostr);break;}
+	case BOZOS:		{pStrCat("\p Bozo",infostr);break;}
+	}
+*/
+if(ships > 1)
+	pStrCat("\p Ships fortify",infostr);
+else
+	pStrCat("\p Ship fortifies",infostr);
+
+EraseRgn(brgn);
+FrameRgn(brgn);
+
+OffsetRgn(brgn,-1,-1);
+EraseRgn(brgn);
+FrameRgn(brgn);
+
+TextFont(GetAppFont());
+TextSize(9);
+TextFace(bold);
+
+ibox = r;
+InsetRect(&ibox,10,5);
+TextBox(&infostr[1], infostr[0], &ibox, teJustCenter);
+/*
+MoveTo(r.left+10,r.bottom-10);
+DrawString(infostr);
+*/
+TextFont(0);
+TextSize(12);
+TextFace(0);
+
+DisposeRgn(brgn);
+
+
+if(fastbattles)
+	Delay(60L,&crap);
+else
+	Delay(120L,&crap);
+
+Restore_Bits();
+SetPort(sp);
+
+
+precs[tp].ships += ships;
+}

@@ -1,0 +1,54 @@
+/* XPM */
+
+static char *ind_planet[] =
+
+{
+
+/* width height ncolors chars_per_pixel */
+
+"16 16 3 1",
+
+/* colors */
+
+"A c #FFFFFFFFFFFF",
+
+"B c None",
+
+"C c #000000000000",
+
+/* pixels */
+
+"BBBBBBBBBBBBBBBB",
+
+"BBBBBBBBBBBBBBBB",
+
+"BBBBBBBBBBBBBBBB",
+
+"BBBBBBBBBBBBBBBB",
+
+"BBBBBBBBBBBBBBBB",
+
+"BBBBBBBCCBBBBBBB",
+
+"BBBBBBCCCCBBBBBB",
+
+"BBBBBCCAACCBBBBB",
+
+"BBBBBCCAACCBBBBB",
+
+"BBBBBBCCCCBBBBBB",
+
+"BBBBBBBCCBBBBBBB",
+
+"BBBBBBBBBBBBBBBB",
+
+"BBBBBBBBBBBBBBBB",
+
+"BBBBBBBBBBBBBBBB",
+
+"BBBBBBBBBBBBBBBB",
+
+"BBBBBBBBBBBBBBBB",
+
+};
+

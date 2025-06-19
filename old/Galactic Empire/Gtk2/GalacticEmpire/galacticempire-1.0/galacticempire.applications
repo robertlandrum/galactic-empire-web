@@ -1,0 +1,8 @@
+galacticempire
+	command=galacticempire
+	name=Galactic Empire
+	can_open_multiple_files=false
+	expects_uris=non-file
+	requires_terminal=false
+	supported_uri_schemes=file
+  

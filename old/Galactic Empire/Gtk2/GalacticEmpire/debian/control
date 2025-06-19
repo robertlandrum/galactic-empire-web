@@ -1,0 +1,20 @@
+Source: GalacticEmpire
+Section: games
+Priority: Optional
+Maintainer: Robert Landrum <robertlandrum@gmail.com>
+Standards-Version: 3.7.3.0
+
+Package: galacticempire
+Architecture: all
+Depends: perl libgtk2-perl libgnome2-perl libdbi-perl libdbd-sqlite3-perl
+
+Description: Simple strategy came with unique enemies
+ Galactic Empire is a strategy game where your mission, as the Humans, is to
+ dominate the galaxy.  There are 8 other races, each with a different battle
+ tactic.
+
+ This is a port of a Mac OS 7 game of the same name, whose original code was 
+ written in 1990, and later updated in 1996.  This port was done with the 
+ blessing of the original authors.  That game was based on an earlier, similar,
+ game called Galax.
+

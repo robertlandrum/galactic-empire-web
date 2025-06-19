@@ -1,0 +1,4 @@
+#!/bin/sh
+export GE_SHARE=/usr/share/galactic-empire
+export PERLLIB=/usr/share/galactic-empire/lib
+/usr/bin/galactic-empire.pl

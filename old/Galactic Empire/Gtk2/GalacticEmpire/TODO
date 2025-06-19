@@ -1,0 +1,68 @@
+Display bug on lower panel...  Wrapping text
+
+Scores not sorting.
+
+Probably want to have the enemy dead dialog before the final you won dialog.
+
+Versioning
+
+SVN Checkin
+
+Logging
+
+Stats
+  Planets taken
+    planets_taken
+
+  Enemy Ships Destroyed
+    human_attack_ratio_hit
+
+  Ships in Flight
+  Ships in Defense
+
+  Failed Attacks
+    human_failed_attacks
+  Total Pings
+    human_total_pings
+
+  Total Industry (per year?)
+  Total Planets (per year)
+  Total Ships (per year)
+
+  All Enemy Ships p/y
+  All Enemy Industry p/y
+  All Enemy Planets p/y
+
+  Enemy:
+    Enemy Ships p/y
+    Enemy Industry p/y
+    Enemy Planets p/y
+
+  Average Hit Ratio (of the number of ships attacking, how many score hits)
+    human_attack_ratio_hit
+
+  Average Attack Ratio (number of ships attacking in any given volley)
+    human_attack_ratio_ships
+    human_attack_ratio_firing
+
+
+  Number of Enemy attacks that were unsuccessful
+    human_planets_held
+  Number of Enemy attacks that successeded
+    human_planets_lost
+
+
+
+
+GE Website
+
+Bozos...  I think they are sending off other peoples ships.
+
+
+Kill Order:
+Bozo
+Nuke
+Mutant
+Gubru
+Czin
+Bots

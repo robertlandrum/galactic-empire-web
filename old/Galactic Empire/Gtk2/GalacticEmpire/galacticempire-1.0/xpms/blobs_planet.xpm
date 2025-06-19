@@ -1,0 +1,54 @@
+/* XPM */
+
+static char *blob_planet[] =
+
+{
+
+/* width height ncolors chars_per_pixel */
+
+"16 16 3 1",
+
+/* colors */
+
+"A c #FFFF66660000",
+
+"B c #DDDD00000000",
+
+"C c None",
+
+/* pixels */
+
+"CCCCCCCCCCCCCCCC",
+
+"CCCCCCCCCCCCCCCC",
+
+"CCCCCCCAACCCCCCC",
+
+"CCCCCAAAAACCCCCC",
+
+"CCCCCABBBACCCCCC",
+
+"CCCAAABBBAACCCCC",
+
+"CCCABBBBBBAAACCC",
+
+"CCCAABBBBBBBAACC",
+
+"CCCCABBBBBBBBACC",
+
+"CCACABBAAAAABACC",
+
+"CCAAABBBACCAACCC",
+
+"CCAABBBBAACCCCCC",
+
+"CCCAAABBBAACCCCC",
+
+"CCCCCAAAAAACCCCC",
+
+"CCCCCCCCCCCCCCCC",
+
+"CCCCCCCCCCCCCCCC",
+
+};
+

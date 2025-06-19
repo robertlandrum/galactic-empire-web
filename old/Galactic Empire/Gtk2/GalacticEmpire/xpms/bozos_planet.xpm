@@ -1,0 +1,56 @@
+/* XPM */
+
+static char *bozo_planet[] =
+
+{
+
+/* width height ncolors chars_per_pixel */
+
+"16 16 4 1",
+
+/* colors */
+
+"A c #000066660000",
+
+"B c #DDDD00000000",
+
+"C c None",
+
+"D c #000000000000",
+
+/* pixels */
+
+"CCCCCCCCCCCCCCCC",
+
+"CCCCCCCCCCCCCCCC",
+
+"CCCCCCCCCCCCCCCC",
+
+"CCCCCCCAACCCCCCC",
+
+"CCCCCAADDAACCCCC",
+
+"CCCCCCCBBCCCCCCC",
+
+"CCCCCBBBBBBCCCCC",
+
+"CCCBBBBBBBBBBCCC",
+
+"CCBBBBBBBBBBBBCC",
+
+"CCCBBBBBBBBBBCCC",
+
+"CCCCCCBCCBCCCCCC",
+
+"CCCCCBCCCCBCCCCC",
+
+"CCCCBCCCCCCBCCCC",
+
+"CCCBBCCCCCCBBCCC",
+
+"CCCCCCCCCCCCCCCC",
+
+"CCCCCCCCCCCCCCCC",
+
+};
+

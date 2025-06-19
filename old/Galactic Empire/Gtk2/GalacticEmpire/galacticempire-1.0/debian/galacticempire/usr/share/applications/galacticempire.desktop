@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Galactic Empire
+Comment=Simple strategy game with unique enemies
+Version=1.0
+Exec=/usr/bin/galactic-empire
+Type=Application
+Categories=GNOME;Game;StrategyGame;
+Icon=/usr/share/pixmaps/ge_icon_32x32.xpm
+GenericName=Galactic Empire
+

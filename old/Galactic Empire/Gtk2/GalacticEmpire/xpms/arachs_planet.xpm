@@ -1,0 +1,52 @@
+/* XPM */
+
+static char *arach_planet[] =
+
+{
+
+/* width height ncolors chars_per_pixel */
+
+"16 16 2 1",
+
+/* colors */
+
+"A c #FFFF00009999",
+
+"B c None",
+
+/* pixels */
+
+"BBBBBBBBBBBBBBBB",
+
+"BBBBBBBBBBBBBBBB",
+
+"BBBBBBABBBBBBBBB",
+
+"BBABBBAABBBAABBB",
+
+"BBABBBBBABABBBBB",
+
+"BBBAAAABABABBBBB",
+
+"BBBBBBAAAAABBABB",
+
+"BBBBAAAAAAABABBB",
+
+"BBBABBAAAABABBBB",
+
+"BBABBABABABBBBBB",
+
+"BBBBABBABBABBBBB",
+
+"BBBBABBBABBAABBB",
+
+"BBBBABBBABBBBBBB",
+
+"BBBBBBBABBBBBBBB",
+
+"BBBBBBBBBBBBBBBB",
+
+"BBBBBBBBBBBBBBBB",
+
+};
+

@@ -1,0 +1,56 @@
+/* XPM */
+
+static char *gubru_planet[] =
+
+{
+
+/* width height ncolors chars_per_pixel */
+
+"16 16 4 1",
+
+/* colors */
+
+"A c #FFFFFFFF0000",
+
+"B c #666633330000",
+
+"C c #DDDD00000000",
+
+"D c None",
+
+/* pixels */
+
+"DDDDDDDDDDDDDDDD",
+
+"DDDDDDDDDDDDDDDD",
+
+"DDDDDDDDDDDDDDDD",
+
+"DDDDDDCCCCDDDDDD",
+
+"DDBBBBBCCBBBBBDD",
+
+"DDDBAAACCAAABDDD",
+
+"DDDDBAAAAAABDDDD",
+
+"DDDDDBAAAABDDDDD",
+
+"DDDDDDBAABDDDDDD",
+
+"DDDDDDDBBDDDDDDD",
+
+"DDDDDDBAABDDDDDD",
+
+"DDDDDBAAAABDDDDD",
+
+"DDDDDBBBBBBDDDDD",
+
+"DDDDDDDDDDDDDDDD",
+
+"DDDDDDDDDDDDDDDD",
+
+"DDDDDDDDDDDDDDDD",
+
+};
+

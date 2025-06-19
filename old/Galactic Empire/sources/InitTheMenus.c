@@ -1,0 +1,23 @@
+#include "Galaxy.h"
+ 
+MenuHandle   AppleMenu,FileMenu,GalaxyMenu;
+
+void 
+InitMyMenus()
+{
+	ClearMenuBar();
+ 
+	AppleMenu = GetMenu(APPLEMENU);
+	InsertMenu (AppleMenu,0);
+	AddResMenu(AppleMenu,'DRVR');
+ 
+	FileMenu = GetMenu(FILEMENU);
+	InsertMenu (FileMenu,0);
+ 
+	GalaxyMenu = GetMenu(GALAXYMENU);
+	InsertMenu (GalaxyMenu,0);
+ 
+	DrawMenuBar();
+ 
+}
+

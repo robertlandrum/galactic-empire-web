@@ -1,0 +1,2 @@
+?package(galacticempire):command="/usr/bin/galactic-empire" icon="/usr/share/pixmaps/ge_icon_32x32.xpm" needs="X11" \
+  section="Games/Strategy" title="Galactic Empire" hotkey="GalacticEmpire"

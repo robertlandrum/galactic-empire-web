@@ -1,0 +1,70 @@
+game = new GalacticEmpire;
+
+Need to have game.load() and game.save() functions.
+
+game.add_transport(fromPlanet,toPlanet,ships) 
+  Deduct ships from fromPlanet.
+  Calculate time to get from fromPlanet to toPlanet.
+  Add transport record with ships headed to toPlanet.
+  
+This method adds to the transport records the ships that will leave fromPlanet 
+and go to toPlanet.
+
+game.add_feed(fromPlanet,toPlanet)
+Add a constant feed mechanism fromPlanet toPlanet.
+
+game.remove_feed(fromPlanet)
+Remove a constant feed from fromPlanet.
+
+game.planets is an array of planet records.
+game.feeds is an array of feed records
+game.transports is an array of transport records
+game.enemies is an array of enemies to defeat.
+
+game.currentyear is an int. It actually year * 10 to avoid float issues.
+
+game.do_battle()
+  The first thing we do is process all continuous feeds.
+  Then, for each of our enemies, determine what moves they will make.
+  Now we increment the year, and make a callback to show the year.
+  Now we decrement the transport record times.  If there's no time
+    remaining, call game.do_attack_fortify(transport);
+  Now we remove any transports that have no time remaining.
+  Then we check to see if we have won the game.
+    Check for aliens in flight (the transport records).
+    Check for aliens owning planets (the planet records).
+  Then we check to see if we have lost the game.
+    Check for humans in flight.
+    Check for humans owning planets.
+  Finally, we check to see if any of our enemies have been eliminted.
+    Check for alien in flight.
+    Check for alien owning planets.
+  Finally, we make a callback to delay.
+
+game.do_attack_fortify(transport)
+  Determine who owns the ships.
+  Determine who owns the planet.
+  If the planet owner and ship own are the same
+    Then fortify the planet
+  Otherwise
+    Attack the planet.
+
+game.do_fortify(transport);
+  Call the callback for updating ships
+  Add ships to the toPlanets total.
+
+game.do_attack(transport);
+  First determine if this is a suprise attack.  1 in 6 is a suprise attack.
+  If suprise attack, then attackers shoot first, otherwise, defenders.
+  Until there are no attacking or defending ships
+    Determine the number of ships that are firing. (70% + 0-30% rand).
+    Of the firing ships, determine which have hit. (50%).
+    Make a callback to update the display
+  Determine the winner and change ownership of the planet if needed.
+
+
+
+
+
+set_home_planet
+

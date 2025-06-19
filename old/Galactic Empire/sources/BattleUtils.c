@@ -1,0 +1,76 @@
+#include "Galaxy.h"
+#include <stdio.h>
+#include <math.h>
+//#include <SANE.h>
+//#include <Color.h>
+
+extern	Rect			gamerect;
+extern	WindowPtr		gamewind;
+extern	PlanetRec		precs[PLANETROWS*PLANETCOLS];
+extern	TransRec		trecs[MAXTRANSRECS];
+extern	short			tottrecs;
+extern	short			totplanets;
+extern	short			elist[8];			/* Holds our enemy list */
+extern	short			totenemies;			/* Count of our enemies */
+extern	short			currinput;
+extern	short			gamesaved;
+extern	short			selected;
+
+extern	short			fmplanet;
+extern	short			toplanet;
+extern	short			curryear;
+extern	Rect			inforectall;
+extern	Rect			launchrect;
+
+short
+calc_dsquare( short p1, short p2 )
+{
+return (((precs[p1].col - precs[p2].col) * (precs[p1].col - precs[p2].col)) +
+		((precs[p1].row - precs[p2].row) * (precs[p1].row - precs[p2].row)));
+}
+
+double
+calc_distance( short p1, short p2 )
+{
+if (p1 == p2) return 0;
+return sqrt((double) calc_dsquare(p1, p2));
+}
+
+short
+calc_time( short p1, short p2 )
+{
+return (short) (10.0 * calc_distance(p1, p2) * 0.35);
+}
+
+void
+send_ships( short f, short t, short s, short w )
+/* f = from planet					*/
+/* t = to planet					*/
+/* s = number of ships				*/
+/* w = who dunnit					*/			
+{
+TransRec		move;
+
+if (s <= 0) return;
+if (w != precs[f].owns) return;
+if (precs[t].owns == NOPLANET) return;
+if (f < 0 || f >= totplanets) return;
+if (t < 0 || t >= totplanets) return;
+if (f == t) return;
+
+if (s > precs[f].ships) {
+	s = precs[f].ships;
+	if (s == 0) return;
+}
+
+move.fromcol = precs[f].col;
+move.fromrow = precs[f].row; 
+move.tocol = precs[t].col;
+move.torow = precs[t].row;
+move.ships = s;
+move.fromowns = w; 
+move.timeleft = calc_time(f, t);
+
+trecs[tottrecs++] = move;
+precs[f].ships -= s;
+}
